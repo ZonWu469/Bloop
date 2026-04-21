@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineBuildEvent xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SourceFile>C:/Users/dbagn/Desktop/Progetti/Bloop/Bloop/Bloop/Content/Shaders/LightingEffect.fx</SourceFile>
+  <SourceTime>2026-04-19T21:56:05.8291794+02:00</SourceTime>
+  <DestFile>C:/Users/dbagn/Desktop/Progetti/Bloop/Bloop/Bloop/Content/bin/DesktopGL/Content/Shaders/LightingEffect.xnb</DestFile>
+  <DestTime>2026-04-21T10:41:29.6890346+02:00</DestTime>
+  <Importer>EffectImporter</Importer>
+  <ImporterTime>2025-06-02T12:31:02+02:00</ImporterTime>
+  <Processor>EffectProcessor</Processor>
+  <ProcessorTime>2025-06-02T12:31:02+02:00</ProcessorTime>
+  <Parameters>
+    <Key>DebugMode</Key>
+    <Value>Auto</Value>
+  </Parameters>
+  <Dependencies />
+  <BuildAsset />
+  <BuildOutput />
+</PipelineBuildEvent>

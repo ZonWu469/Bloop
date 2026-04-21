@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/dbagn/.nuget/packages/aether.physics2d.mg/2.1.0/**)",
+      "Bash(/usr/bin/strings \"c:/Users/dbagn/.nuget/packages/aether.physics2d.mg/2.1.0/lib/netstandard2.0/Aether.Physics2D.dll\")",
+      "Bash(grep -i \"\\\\.cs$\")"
+    ]
+  }
+}
