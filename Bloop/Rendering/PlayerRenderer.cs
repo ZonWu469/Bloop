@@ -109,6 +109,9 @@ namespace Bloop.Rendering
                 case PlayerState.WallJumping:
                     DrawWallJumping(sb, assets, center, facing, t);
                     break;
+                case PlayerState.WallClinging:
+                    DrawWallClinging(sb, assets, center, facing, t);
+                    break;
                 case PlayerState.Mantling:
                     DrawMantling(sb, assets, center, facing, t);
                     break;
@@ -455,6 +458,53 @@ namespace Bloop.Rendering
                 rShoulder, rElbow, rHand,
                 lHip, lKnee, lFoot,
                 rHip, rKnee, rFoot);
+        }
+
+        private static void DrawWallClinging(SpriteBatch sb, AssetManager assets,
+            Vector2 center, int facing, float t)
+        {
+            // Body pressed flat against the wall, arms gripping, legs braced.
+            // facing points AWAY from the wall (the direction the player would jump).
+            // So the wall is on the -facing side.
+            float wallSide = -facing; // +1 = wall on right, -1 = wall on left
+
+            // Slight lean toward wall
+            float leanX = wallSide * 2f;
+
+            // Arms: both reaching toward the wall, gripping
+            Vector2 lShoulder = center + new Vector2(-5f + leanX, -12f);
+            Vector2 rShoulder = center + new Vector2( 5f + leanX, -12f);
+            Vector2 lElbow    = lShoulder + new Vector2(wallSide * 4f, -2f);
+            Vector2 rElbow    = rShoulder + new Vector2(wallSide * 4f, -2f);
+            Vector2 lHand     = lElbow    + new Vector2(wallSide * 4f,  2f);
+            Vector2 rHand     = rElbow    + new Vector2(wallSide * 4f,  2f);
+
+            // Legs: bent and braced against the wall
+            Vector2 lHip  = center + new Vector2(-4f + leanX,  8f);
+            Vector2 rHip  = center + new Vector2( 4f + leanX,  8f);
+            Vector2 lKnee = lHip   + new Vector2(wallSide * 3f,  8f);
+            Vector2 rKnee = rHip   + new Vector2(wallSide * 3f,  8f);
+            Vector2 lFoot = lKnee  + new Vector2(wallSide * 4f, -4f); // feet toward wall
+            Vector2 rFoot = rKnee  + new Vector2(wallSide * 4f, -4f);
+
+            DrawFullBody(sb, assets, center, facing, 0f,
+                lShoulder, lElbow, lHand,
+                rShoulder, rElbow, rHand,
+                lHip, lKnee, lFoot,
+                rHip, rKnee, rFoot);
+
+            // Friction streaks: short horizontal lines on the suit side facing the wall
+            float streakAlpha = 0.5f + 0.3f * (float)Math.Sin(t * 8f);
+            var streakColor = new Color(180, 170, 200, (int)(180 * streakAlpha));
+            float streakX = center.X + wallSide * (Player.WidthPx * 0.4f);
+            for (int i = 0; i < 3; i++)
+            {
+                float sy = center.Y - 6f + i * 6f;
+                GeometryBatch.DrawLine(sb, assets,
+                    new Vector2(streakX, sy),
+                    new Vector2(streakX + wallSide * 4f, sy + 2f),
+                    streakColor, 1);
+            }
         }
 
         private static void DrawMantling(SpriteBatch sb, AssetManager assets,

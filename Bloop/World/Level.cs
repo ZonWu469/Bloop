@@ -257,9 +257,11 @@ namespace Bloop.World
                 {
                     var wormLight = new LightSource(
                         worm.PixelPosition,
-                        radius:    110f,
-                        intensity: 1.2f,
-                        color:     new Color(160, 230, 80));
+                        radius:    200f,
+                        intensity: 2.5f,
+                        color:     new Color(120, 240, 160));
+                    wormLight.FlickerAmplitude = 0.06f;
+                    wormLight.FlickerFrequency = 3f;
                     _levelLights.Add(wormLight);
                     worm.SetLightSource(wormLight);
                 }
@@ -268,9 +270,11 @@ namespace Bloop.World
                 {
                     var isopodLight = new LightSource(
                         isopod.PixelPosition,
-                        radius:    90f,
-                        intensity: 1.1f,
-                        color:     new Color(80, 200, 200));
+                        radius:    200f,
+                        intensity: 2.2f,
+                        color:     new Color(80, 200, 220));
+                    isopodLight.FlickerAmplitude = 0.05f;
+                    isopodLight.FlickerFrequency = 4f;
                     _levelLights.Add(isopodLight);
                     isopod.SetLightSource(isopodLight);
                 }
@@ -370,6 +374,34 @@ namespace Bloop.World
             foreach (var chain in _chains)
                 chain.Update(gameTime);
 
+            // Propagate player position to all entities for idle AI proximity checks
+            if (player != null)
+            {
+                foreach (var obj in _objects)
+                {
+                    if (obj is Entities.ControllableEntity entity && !entity.IsDestroyed)
+                        entity.SetPlayerReference(player.PixelPosition);
+                }
+            }
+
+            // Update LuminescentGlowworm cluster center (centroid of all glowworms)
+            {
+                var clusterSum   = Vector2.Zero;
+                int clusterCount = 0;
+                foreach (var obj in _objects)
+                {
+                    if (obj is Entities.LuminescentGlowworm gw && !gw.IsDestroyed && !gw.IsControlled)
+                    {
+                        clusterSum += gw.PixelPosition;
+                        clusterCount++;
+                    }
+                }
+                Entities.LuminescentGlowworm.ClusterCenter = clusterCount > 0
+                    ? clusterSum / clusterCount
+                    : Vector2.Zero;
+                Entities.LuminescentGlowworm.ClusterCount = clusterCount;
+            }
+
             // Update all active objects
             foreach (var obj in _objects)
             {
@@ -442,6 +474,30 @@ namespace Bloop.World
 
                 if (obj.IsDestroyed)
                     _toRemove.Add(obj);
+            }
+
+            // ── Entity contact damage check ────────────────────────────────────
+            // Separate pass after all object updates so entity bounds are current.
+            if (player != null && !player.IsContactInvulnerable)
+            {
+                foreach (var obj in _objects)
+                {
+                    if (obj is Entities.ControllableEntity entity
+                        && !entity.IsControlled
+                        && !entity.IsDestroyed
+                        && entity.DamagesPlayerOnContact)
+                    {
+                        var entityBounds = entity.GetBounds();
+                        if (!entityBounds.IsEmpty && entityBounds.Intersects(player.PixelBounds))
+                        {
+                            player.ApplyContactDamage(
+                                entity.ContactDamage,
+                                entity.ContactStunDuration,
+                                entity.DisplayName);
+                            break; // only one hit per frame
+                        }
+                    }
+                }
             }
 
             // Remove destroyed objects

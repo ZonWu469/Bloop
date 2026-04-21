@@ -35,6 +35,11 @@ namespace Bloop.Entities
         public override float  MovementSpeed   => 200f;
         public override bool   CanFly          => true;
 
+        // ── Contact damage ─────────────────────────────────────────────────────
+        public override bool  DamagesPlayerOnContact => true;
+        public override float ContactDamage          => 5f;
+        public override float ContactStunDuration    => 0.3f;
+
         // ── Sonic Pulse state (shared with renderer) ───────────────────────────
         /// <summary>True while the pulse ring is expanding (visual effect).</summary>
         public bool  PulseActive   { get; private set; }
@@ -56,6 +61,16 @@ namespace Bloop.Entities
         private const float IdleWanderInterval = 3f;
         private const float IdleWanderSpeed    = 60f;
         private const float IdleWanderRadius   = 80f;
+
+        // ── Aggro swoop state ──────────────────────────────────────────────────
+        private bool    _isAggro;
+        private float   _aggroTimer;
+        private Vector2 _aggroTarget;
+        private const float AggroRange       = 80f;   // px — player detection radius
+        private const float AggroSwoopSpeed  = 160f;  // px/s during swoop
+        private const float AggroSwoopTime   = 0.5f;  // seconds of swoop
+        private const float AggroRetreatTime = 1.0f;  // seconds of retreat after swoop
+        private bool    _aggroRetreating;
 
         // ── Controlled flight state ────────────────────────────────────────────
         private readonly InputManager _input;
@@ -87,6 +102,9 @@ namespace Bloop.Entities
         }
 
         // ── ControllableEntity overrides ───────────────────────────────────────
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Swooping cave predator. Echolocates in darkness.", "[Q] Control — 9s flight");
 
         protected override void OnControlStart()
         {
@@ -207,6 +225,51 @@ namespace Bloop.Entities
                 MoveTowardTarget(_idleWanderTarget, IdleWanderSpeed * 0.5f, dt);
                 return;
             }
+
+            // ── Aggro swoop: detect player within AggroRange ───────────────────
+            if (HasPlayerPosition && !_isAggro && !_aggroRetreating)
+            {
+                float distToPlayer = Vector2.Distance(PixelPosition, PlayerPosition);
+                if (distToPlayer < AggroRange)
+                {
+                    _isAggro      = true;
+                    _aggroTimer   = AggroSwoopTime;
+                    _aggroTarget  = PlayerPosition;
+                }
+            }
+
+            if (_isAggro)
+            {
+                _aggroTimer -= dt;
+                MoveTowardTarget(_aggroTarget, AggroSwoopSpeed, dt);
+                if (_aggroTimer <= 0f)
+                {
+                    _isAggro         = false;
+                    _aggroRetreating = true;
+                    _aggroTimer      = AggroRetreatTime;
+                    // Retreat back toward roost
+                    _idleWanderTarget = _roostPosition;
+                }
+                // Fast wing flap during swoop
+                _wingTimer += dt * 4f;
+                WingPhase = (_wingTimer % 1f);
+                return;
+            }
+
+            if (_aggroRetreating)
+            {
+                _aggroTimer -= dt;
+                MoveTowardTarget(_roostPosition, IdleWanderSpeed * 1.5f, dt);
+                if (_aggroTimer <= 0f)
+                    _aggroRetreating = false;
+                _wingTimer += dt * 1.5f;
+                WingPhase = (_wingTimer % 1f);
+                return;
+            }
+
+            // ── Flock behavior: bias wander toward nearby bats' centroid ──────
+            // (Handled via FollowTarget when same-type skill fires; here we just
+            //  add a gentle drift toward the roost to keep bats loosely grouped.)
 
             // Normal idle: wander near roost
             _idleWanderTimer -= dt;

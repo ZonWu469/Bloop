@@ -36,6 +36,13 @@ namespace Bloop.Entities
         private float   _wanderTimer;
         private const float WanderInterval = 3.5f;
 
+        // ── Flee from player ───────────────────────────────────────────────────
+        private bool  _fleeFromPlayer;
+        private float _fleeFromPlayerTimer;
+        private const float PlayerFleeRange    = 100f;  // px — detection radius
+        private const float PlayerFleeDuration = 2f;    // seconds of flee
+        private const float FleeFromPlayerSpeed = 70f;  // px/s while fleeing player
+
         public BlindCaveSalamander(Vector2 pixelPosition, AetherWorld world,
             InputManager input, Camera camera)
             : base(ControllableEntityType.BlindCaveSalamander, pixelPosition, world)
@@ -52,6 +59,10 @@ namespace Bloop.Entities
         }
 
         protected override void OnControlStart() { }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Timid cave amphibian. Flees from light and movement.", "[Q] Control — 12s scout");
+
         protected override void OnControlEnd()
         {
             _wanderTarget = PixelPosition;
@@ -82,6 +93,8 @@ namespace Bloop.Entities
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             if (IsStuck) { SetVelocity(Vector2.Zero); return; }
+
+            // ── Skill-triggered flee (different-type effect) ───────────────────
             if (IsFleeing) { SetVelocity(FleeDirection * MovementSpeed * 0.5f); return; }
 
             if (IsFollowing && FollowTarget != null)
@@ -94,14 +107,46 @@ namespace Bloop.Entities
                 return;
             }
 
+            // ── Flee from player when nearby ───────────────────────────────────
+            if (_fleeFromPlayer)
+            {
+                _fleeFromPlayerTimer -= dt;
+                if (_fleeFromPlayerTimer <= 0f)
+                    _fleeFromPlayer = false;
+                else
+                {
+                    // Flee away from player
+                    if (HasPlayerPosition)
+                    {
+                        Vector2 awayFromPlayer = Vector2.Normalize(PixelPosition - PlayerPosition);
+                        SetVelocity(new Vector2(awayFromPlayer.X * FleeFromPlayerSpeed, GetVelocityPixels().Y));
+                    }
+                    return;
+                }
+            }
+
+            if (HasPlayerPosition && !_fleeFromPlayer)
+            {
+                float distToPlayer = Vector2.Distance(PixelPosition, PlayerPosition);
+                if (distToPlayer < PlayerFleeRange)
+                {
+                    _fleeFromPlayer      = true;
+                    _fleeFromPlayerTimer = PlayerFleeDuration;
+                    return;
+                }
+            }
+
+            // ── Normal wander (bias toward horizontal — water edge behavior) ───
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {
                 _wanderTimer = WanderInterval;
                 var rng = new Random();
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                // Bias strongly horizontal to simulate hugging water edges
+                float angle = (float)(rng.NextDouble() * Math.PI * 0.5 - Math.PI * 0.25); // ±45°
+                float r     = 50f + (float)(rng.NextDouble() * 30f);
                 _wanderTarget = PixelPosition + new Vector2(
-                    (float)Math.Cos(angle) * 50f, (float)Math.Sin(angle) * 20f);
+                    (float)Math.Cos(angle) * r, (float)Math.Sin(angle) * 10f);
             }
 
             Vector2 toWander = _wanderTarget - PixelPosition;

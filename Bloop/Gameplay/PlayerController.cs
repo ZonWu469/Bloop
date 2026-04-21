@@ -90,6 +90,17 @@ namespace Bloop.Gameplay
         /// <summary>Remaining cooldown time before another wall jump is allowed.</summary>
         private float _wallJumpCooldownTimer = 0f;
 
+        // ── Wall slide / cling state ───────────────────────────────────────────
+        /// <summary>How long the player has been pressing toward a wall while falling.</summary>
+        private float _wallSlideTimer = 0f;
+        /// <summary>Current linear damping applied during wall slide (ramps up).</summary>
+        private float _wallSlideDamping = 0f;
+        private const float WallSlideMaxDamping       = 20f;  // damping at full slide
+        private const float WallSlideRampTime         = 0.5f; // seconds to reach max damping
+        private const float WallClingVelocityThreshold = 10f; // px/s — below this, snap to cling
+        private const float WallClingTimerThreshold   = 0.6f; // seconds pressing wall → auto-cling
+        private const float WallClimbSpeed            = 40f;  // px/s upward while clinging
+
         // ── Coyote time state ──────────────────────────────────────────────────
         /// <summary>Remaining coyote time after leaving a platform.</summary>
         private float _coyoteTimer = 0f;
@@ -141,7 +152,7 @@ namespace Bloop.Gameplay
         /// </summary>
         public void Update(GameTime gameTime)
         {
-            // Dead, stunned, or mantling — no input
+            // Dead, stunned, mantling, or wall-clinging (handled below) — no normal input
             if (_player.State == PlayerState.Dead    ||
                 _player.State == PlayerState.Stunned ||
                 _player.State == PlayerState.Mantling)
@@ -156,6 +167,79 @@ namespace Bloop.Gameplay
 
             // ── Per-frame wall detection via raycasts ──────────────────────────
             UpdateWallDetection();
+
+            // ── Wall slide → cling transition ──────────────────────────────────
+            if (_player.State == PlayerState.Falling && _player.IsTouchingWall)
+            {
+                float horiz = _input.GetHorizontalAxis();
+                bool pressingTowardWall = (_player.IsTouchingWallLeft  && horiz < 0f)
+                                       || (_player.IsTouchingWallRight && horiz > 0f);
+                if (pressingTowardWall)
+                {
+                    _wallSlideTimer += dt;
+                    _wallSlideDamping = MathHelper.Lerp(0f, WallSlideMaxDamping,
+                        MathHelper.Clamp(_wallSlideTimer / WallSlideRampTime, 0f, 1f));
+                    _player.Body.LinearDamping = _wallSlideDamping;
+
+                    float fallSpeed = Math.Abs(PhysicsManager.ToPixels(_player.Body.LinearVelocity.Y));
+                    if (fallSpeed < WallClingVelocityThreshold || _wallSlideTimer > WallClingTimerThreshold)
+                    {
+                        _player.SetState(PlayerState.WallClinging);
+                        _wallSlideTimer   = 0f;
+                        _wallSlideDamping = 0f;
+                    }
+                }
+                else
+                {
+                    _wallSlideTimer   = 0f;
+                    _wallSlideDamping = 0f;
+                }
+            }
+            else if (_player.State != PlayerState.WallClinging)
+            {
+                _wallSlideTimer   = 0f;
+                _wallSlideDamping = 0f;
+            }
+
+            // ── Wall cling controls ────────────────────────────────────────────
+            if (_player.State == PlayerState.WallClinging)
+            {
+                float horiz = _input.GetHorizontalAxis();
+                bool pressingTowardWall = (_player.IsTouchingWallLeft  && horiz < 0f)
+                                       || (_player.IsTouchingWallRight && horiz > 0f);
+
+                if (_input.IsJumpPressed())
+                {
+                    // Wall jump — reuse existing wall jump logic by falling through
+                    // to the jump section below. First restore normal physics.
+                    _player.Body.IgnoreGravity = false;
+                    _player.Body.LinearDamping = 0f;
+                    _player.SetState(PlayerState.Falling); // will be overridden by wall jump below
+                    // Fall through to jump handling
+                }
+                else if (_input.IsCrouchHeld() || (!pressingTowardWall && horiz != 0f))
+                {
+                    // Down or pressing away: release cling
+                    _player.Body.IgnoreGravity = false;
+                    _player.Body.LinearDamping = 0f;
+                    _player.SetState(PlayerState.Falling);
+                    return;
+                }
+                else if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
+                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up))
+                {
+                    // Slow climb upward while clinging
+                    _player.Body.IgnoreGravity = false;
+                    _player.Body.LinearDamping = 8f;
+                    _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, -WallClimbSpeed));
+                    return;
+                }
+                else
+                {
+                    // Holding cling — stay frozen
+                    return;
+                }
+            }
 
             // ── Launching state (2.4) — allow grapple re-fire, then fall through ─
             // The Launching state is handled in Player.Update() for gravity reduction.

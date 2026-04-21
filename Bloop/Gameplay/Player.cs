@@ -25,6 +25,12 @@ namespace Bloop.Gameplay
         Rappelling,
         Swinging,
         WallJumping,
+        /// <summary>
+        /// Player is clinging to a wall — gravity disabled, body frozen.
+        /// Entered from Falling when pressing toward a wall for WallClingTimerThreshold seconds.
+        /// Exited by jumping (wall jump), pressing away from wall, pressing down, or losing wall contact.
+        /// </summary>
+        WallClinging,
         Mantling,
         Launching,   // 2.4 — brief post-release boost state (reduced gravity, speed lines)
         Stunned,
@@ -114,6 +120,18 @@ namespace Bloop.Gameplay
 
         // ── Stun timer ─────────────────────────────────────────────────────────
         private float _stunTimer = 0f;
+
+        // ── Contact invulnerability (prevents rapid multi-hits from entities) ──
+        private float _contactInvulnTimer = 0f;
+        private const float ContactInvulnDuration = 1.0f;
+        /// <summary>True while the player is immune to entity contact damage.</summary>
+        public bool IsContactInvulnerable => _contactInvulnTimer > 0f;
+
+        /// <summary>
+        /// Optional callback invoked when the player receives contact damage.
+        /// Parameter: damage amount. Wired up by GameplayScreen for damage flash effect.
+        /// </summary>
+        public Action<float>? OnDamageReceived { get; set; }
 
         // ── Mantle state (2.2) ─────────────────────────────────────────────────
         private float   _mantleTimer       = 0f;
@@ -218,10 +236,11 @@ namespace Bloop.Gameplay
             else if (wasCrouching && !willCrouch)
                 RebuildHitbox(StandingHeightPx);
 
-            // Non-gravity states break impact tracking (rope/vine takes the load)
+            // Non-gravity states break impact tracking (rope/vine or wall takes the load)
             if (newState == PlayerState.Climbing ||
                 newState == PlayerState.Rappelling ||
                 newState == PlayerState.Swinging ||
+                newState == PlayerState.WallClinging ||
                 newState == PlayerState.Stunned ||
                 newState == PlayerState.Dead)
             {
@@ -248,6 +267,13 @@ namespace Bloop.Gameplay
                 case PlayerState.ThrowingFlare:
                     Body.IgnoreGravity = false;
                     Body.LinearDamping = 0f;
+                    break;
+
+                case PlayerState.WallClinging:
+                    // Freeze against the wall — gravity off, full damping
+                    Body.IgnoreGravity = true;
+                    Body.LinearDamping = 99f;
+                    Body.LinearVelocity = Vector2.Zero;
                     break;
 
                 case PlayerState.Mantling:
@@ -303,6 +329,9 @@ namespace Bloop.Gameplay
         public void Update(GameTime gameTime, int currentDepth)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            // Tick contact invulnerability timer
+            if (_contactInvulnTimer > 0f) _contactInvulnTimer -= dt;
 
             // Tick stats (breath, lantern, suffocation)
             Stats.Tick(dt, currentDepth);
@@ -367,6 +396,12 @@ namespace Bloop.Gameplay
             if (!IsGrounded && Body.LinearVelocity.Y > _peakFallVelMs)
                 _peakFallVelMs = Body.LinearVelocity.Y;
 
+            // Auto-transition: WallClinging → Falling when wall contact is lost
+            if (State == PlayerState.WallClinging && !IsTouchingWall)
+            {
+                SetState(PlayerState.Falling);
+            }
+
             // Auto-transition: Idle ↔ Falling based on vertical velocity
             if (State == PlayerState.Idle || State == PlayerState.Walking ||
                 State == PlayerState.Crouching || State == PlayerState.ThrowingFlare)
@@ -422,6 +457,22 @@ namespace Bloop.Gameplay
             // ── Screen shake on stun hit (3.2) ────────────────────────────────
             // Sharp horizontal shake: 5px amplitude, 0.2s duration
             OnShakeRequested?.Invoke(5f, 0.20f);
+        }
+
+        // ── Contact damage (entity collision) ─────────────────────────────────
+
+        /// <summary>
+        /// Apply contact damage from a hostile entity.
+        /// Respects the invulnerability window to prevent rapid multi-hits.
+        /// Also triggers a stun if stunDuration > 0.
+        /// </summary>
+        public void ApplyContactDamage(float damage, float stunDuration, string? source = null)
+        {
+            if (IsContactInvulnerable || State == PlayerState.Dead) return;
+            Stats.TakeDamage(damage, source);
+            if (stunDuration > 0f) Stun(stunDuration);
+            _contactInvulnTimer = ContactInvulnDuration;
+            OnDamageReceived?.Invoke(damage);
         }
 
         // ── Launch (2.4) ───────────────────────────────────────────────────────

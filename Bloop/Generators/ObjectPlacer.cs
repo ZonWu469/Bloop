@@ -1233,47 +1233,64 @@ namespace Bloop.Generators
             TileMap map, CavityAnalyzer analyzer, Random rng,
             List<ObjectPlacement> placements, int w, int h, int depth)
         {
-            const int EntitySpacing = 20; // minimum tile distance between same-type entities
+            // Solitary entities: enforce minimum tile spacing between same-type placements
+            const int SolitarySpacing  = 8;  // tiles — SilkWeaverSpider, DeepBurrowWorm
+            const int GregariousSpacing = 20; // tiles — gregarious anchor spacing
 
-            // ── Echo Bat: ceiling tiles with open space below ──────────────────
+            // ── Echo Bat: ceiling tiles — gregarious, spawn in clusters ────────
             {
-                int count = 0;
-                int maxCount = 1 + (depth >= 3 ? 1 : 0);
-                int lastTx = -999;
-                for (int ty = 2; ty < h - 2 && count < maxCount; ty++)
+                int anchorCount = 0;
+                int maxAnchors  = Math.Min(5, 3 + depth);
+                int lastTx      = -999;
+                for (int ty = 2; ty < h - 2 && anchorCount < maxAnchors; ty++)
                 {
-                    for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
+                    for (int tx = 3; tx < w - 3 && anchorCount < maxAnchors; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty + 1) != TileType.Empty) continue;
                         if (map.GetTile(tx, ty + 2) != TileType.Empty) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 80.0) continue;
 
+                        // Anchor bat
+                        var anchor = TileMap.TileCenter(tx, ty + 1);
                         placements.Add(new ObjectPlacement
                         {
                             Type          = ObjectType.EchoBat,
-                            PixelPosition = TileMap.TileCenter(tx, ty + 1),
+                            PixelPosition = anchor,
                         });
                         lastTx = tx;
-                        count++;
+                        anchorCount++;
+
+                        // Cluster: 1-3 additional bats within 3-tile radius (ceiling → spawn below solid tile)
+                        int clusterSize = 1 + rng.Next(3);
+                        PlaceCluster(map, rng, placements, ObjectType.EchoBat,
+                            anchor, clusterSize, radiusTiles: 3, w, h,
+                            tileValidator: (cx, cy) =>
+                                TileProperties.IsSolid(map.GetTile(cx, cy))
+                                && map.GetTile(cx, cy + 1) == TileType.Empty,
+                            spawnTileYOffset: +1);
                     }
                 }
             }
 
-            // ── Silk Weaver Spider: wall surfaces ──────────────────────────────
+            // ── Silk Weaver Spider: wall surfaces — solitary, enforced spacing ─
             {
-                int count = 0;
+                int count  = 0;
                 int maxCount = 1 + (depth >= 2 ? 1 : 0);
-                int lastTy = -999;
+                var placed = new List<(int tx, int ty)>();
                 for (int tx = 2; tx < w - 2 && count < maxCount; tx++)
                 {
                     for (int ty = 3; ty < h - 3 && count < maxCount; ty++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
-                        // Must have empty space to the right (wall-left surface)
                         if (map.GetTile(tx + 1, ty) != TileType.Empty) continue;
-                        if (Math.Abs(ty - lastTy) < EntitySpacing) continue;
+                        // Enforce solitary spacing against all previously placed spiders
+                        bool tooClose = false;
+                        foreach (var (px, py) in placed)
+                            if (Math.Abs(tx - px) < SolitarySpacing && Math.Abs(ty - py) < SolitarySpacing)
+                            { tooClose = true; break; }
+                        if (tooClose) continue;
                         if (rng.NextDouble() > 1.0 / 90.0) continue;
 
                         placements.Add(new ObjectPlacement
@@ -1281,80 +1298,97 @@ namespace Bloop.Generators
                             Type          = ObjectType.SilkWeaverSpider,
                             PixelPosition = TileMap.TileCenter(tx + 1, ty),
                         });
-                        lastTy = ty;
+                        placed.Add((tx, ty));
                         count++;
                     }
                 }
             }
 
-            // ── Chain Centipede: ceiling surfaces (depth ≥ 2) ─────────────────
+            // ── Chain Centipede: ceiling surfaces — gregarious (depth ≥ 2) ─────
             if (depth >= 2)
             {
-                int count = 0;
-                int maxCount = 1 + (depth >= 4 ? 1 : 0);
-                int lastTx = -999;
-                for (int ty = 2; ty < h - 2 && count < maxCount; ty++)
+                int anchorCount = 0;
+                int maxAnchors  = 2 + (depth >= 4 ? 2 : 0);
+                int lastTx      = -999;
+                for (int ty = 2; ty < h - 2 && anchorCount < maxAnchors; ty++)
                 {
-                    for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
+                    for (int tx = 3; tx < w - 3 && anchorCount < maxAnchors; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty + 1) != TileType.Empty) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 100.0) continue;
 
+                        var anchor = TileMap.TileCenter(tx, ty + 1);
                         placements.Add(new ObjectPlacement
                         {
                             Type          = ObjectType.ChainCentipede,
-                            PixelPosition = TileMap.TileCenter(tx, ty + 1),
+                            PixelPosition = anchor,
                         });
                         lastTx = tx;
-                        count++;
+                        anchorCount++;
+
+                        // Cluster: 1-2 additional centipedes within 3-tile radius (ceiling → spawn below solid tile)
+                        int clusterSize = 1 + rng.Next(2);
+                        PlaceCluster(map, rng, placements, ObjectType.ChainCentipede,
+                            anchor, clusterSize, radiusTiles: 3, w, h,
+                            tileValidator: (cx, cy) =>
+                                TileProperties.IsSolid(map.GetTile(cx, cy))
+                                && map.GetTile(cx, cy + 1) == TileType.Empty,
+                            spawnTileYOffset: +1);
                     }
                 }
             }
 
-            // ── Luminescent Glowworm: floor surfaces in alcoves ────────────────
+            // ── Luminescent Glowworm: floor alcoves — gregarious, large clusters
             {
-                int count = 0;
-                int maxCount = 1 + (depth >= 2 ? 1 : 0);
-                int lastTx = -999;
-                for (int ty = 3; ty < h - 2 && count < maxCount; ty++)
+                int anchorCount = 0;
+                int maxAnchors  = Math.Min(6, 4 + depth);
+                int lastTx      = -999;
+                for (int ty = 3; ty < h - 2 && anchorCount < maxAnchors; ty++)
                 {
-                    for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
+                    for (int tx = 3; tx < w - 3 && anchorCount < maxAnchors; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty - 1) != TileType.Empty) continue;
-                        // Prefer alcoves: wall on at least one side
                         bool hasWall = TileProperties.IsSolid(map.GetTile(tx - 1, ty - 1))
                                     || TileProperties.IsSolid(map.GetTile(tx + 1, ty - 1));
                         if (!hasWall) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 70.0) continue;
 
+                        var anchor = TileMap.TileCenter(tx, ty - 1);
                         placements.Add(new ObjectPlacement
                         {
                             Type          = ObjectType.LuminescentGlowworm,
-                            PixelPosition = TileMap.TileCenter(tx, ty - 1),
+                            PixelPosition = anchor,
                         });
                         lastTx = tx;
-                        count++;
+                        anchorCount++;
+
+                        // Cluster: 2-4 additional glowworms within 2-tile radius
+                        int clusterSize = 2 + rng.Next(3);
+                        PlaceCluster(map, rng, placements, ObjectType.LuminescentGlowworm,
+                            anchor, clusterSize, radiusTiles: 2, w, h,
+                            tileValidator: (cx, cy) =>
+                                TileProperties.IsSolid(map.GetTile(cx, cy))
+                                && map.GetTile(cx, cy - 1) == TileType.Empty);
                     }
                 }
             }
 
-            // ── Deep Burrow Worm: wide floor areas (depth ≥ 2) ────────────────
+            // ── Deep Burrow Worm: wide floor — solitary, enforced spacing ──────
             if (depth >= 2)
             {
-                int count = 0;
+                int count  = 0;
                 int maxCount = 1 + (depth >= 4 ? 1 : 0);
-                int lastTx = -999;
+                var placed = new List<(int tx, int ty)>();
                 for (int ty = 3; ty < h - 2 && count < maxCount; ty++)
                 {
                     for (int tx = 4; tx < w - 4 && count < maxCount; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty - 1) != TileType.Empty) continue;
-                        // Wide floor: at least 4 consecutive floor tiles
                         int floorW = 0;
                         for (int dx = -2; dx <= 2; dx++)
                         {
@@ -1365,7 +1399,12 @@ namespace Bloop.Generators
                                 floorW++;
                         }
                         if (floorW < 4) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        // Enforce solitary spacing
+                        bool tooClose = false;
+                        foreach (var (px, py) in placed)
+                            if (Math.Abs(tx - px) < SolitarySpacing && Math.Abs(ty - py) < SolitarySpacing)
+                            { tooClose = true; break; }
+                        if (tooClose) continue;
                         if (rng.NextDouble() > 1.0 / 110.0) continue;
 
                         placements.Add(new ObjectPlacement
@@ -1373,64 +1412,127 @@ namespace Bloop.Generators
                             Type          = ObjectType.DeepBurrowWorm,
                             PixelPosition = TileMap.TileCenter(tx, ty - 1),
                         });
-                        lastTx = tx;
+                        placed.Add((tx, ty));
                         count++;
                     }
                 }
             }
 
-            // ── Blind Cave Salamander: floor near shaft bottoms (depth ≥ 1) ───
+            // ── Blind Cave Salamander: floor near shaft bottoms — spawn in pairs
             {
-                int count = 0;
+                int count    = 0;
                 int maxCount = 1 + (depth >= 3 ? 1 : 0);
-                int lastTx = -999;
+                int lastTx   = -999;
                 for (int ty = 3; ty < h - 2 && count < maxCount; ty++)
                 {
                     for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty - 1) != TileType.Empty) continue;
-                        // Prefer shaft bottoms
                         bool isShaftBottom = ty - 1 >= 0 && ty - 1 < h
                                           && analyzer.IsShaftBottom[tx, ty - 1];
                         if (!isShaftBottom && rng.NextDouble() > 0.3) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 85.0) continue;
 
+                        var anchor = TileMap.TileCenter(tx, ty - 1);
                         placements.Add(new ObjectPlacement
                         {
                             Type          = ObjectType.BlindCaveSalamander,
-                            PixelPosition = TileMap.TileCenter(tx, ty - 1),
+                            PixelPosition = anchor,
                         });
                         lastTx = tx;
                         count++;
+
+                        // Spawn a second salamander within 4-tile radius (pair behavior)
+                        PlaceCluster(map, rng, placements, ObjectType.BlindCaveSalamander,
+                            anchor, count: 1, radiusTiles: 4, w, h,
+                            tileValidator: (cx, cy) =>
+                                TileProperties.IsSolid(map.GetTile(cx, cy))
+                                && map.GetTile(cx, cy - 1) == TileType.Empty);
                     }
                 }
             }
 
-            // ── Luminous Isopod: floor near entry point (depth ≥ 1) ───────────
+            // ── Luminous Isopod: floor — gregarious, spawn in groups ───────────
             {
-                int count = 0;
-                int maxCount = 1;
-                int lastTx = -999;
-                for (int ty = 3; ty < h - 2 && count < maxCount; ty++)
+                int anchorCount = 0;
+                int maxAnchors  = 1 + (depth >= 2 ? 2 : 0);
+                int lastTx      = -999;
+                for (int ty = 3; ty < h - 2 && anchorCount < maxAnchors; ty++)
                 {
-                    for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
+                    for (int tx = 3; tx < w - 3 && anchorCount < maxAnchors; tx++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx, ty - 1) != TileType.Empty) continue;
-                        if (Math.Abs(tx - lastTx) < EntitySpacing) continue;
+                        if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 60.0) continue;
 
+                        var anchor = TileMap.TileCenter(tx, ty - 1);
                         placements.Add(new ObjectPlacement
                         {
                             Type          = ObjectType.LuminousIsopod,
-                            PixelPosition = TileMap.TileCenter(tx, ty - 1),
+                            PixelPosition = anchor,
                         });
                         lastTx = tx;
-                        count++;
+                        anchorCount++;
+
+                        // Cluster: 1-3 additional isopods within 3-tile radius
+                        int clusterSize = 1 + rng.Next(3);
+                        PlaceCluster(map, rng, placements, ObjectType.LuminousIsopod,
+                            anchor, clusterSize, radiusTiles: 3, w, h,
+                            tileValidator: (cx, cy) =>
+                                TileProperties.IsSolid(map.GetTile(cx, cy))
+                                && map.GetTile(cx, cy - 1) == TileType.Empty);
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Place up to <paramref name="count"/> entities of <paramref name="type"/> within
+        /// <paramref name="radiusTiles"/> tiles of <paramref name="anchor"/>.
+        /// <paramref name="tileValidator"/>(tx, ty) must return true for the solid tile;
+        /// <paramref name="spawnTileYOffset"/> is added to ty to get the spawn tile
+        /// (e.g. -1 for floor entities that spawn one tile above the solid tile,
+        ///  +1 for ceiling entities that spawn one tile below the solid tile).
+        /// </summary>
+        private static void PlaceCluster(
+            TileMap map, Random rng, List<ObjectPlacement> placements,
+            ObjectType type, Vector2 anchor, int count, int radiusTiles,
+            int mapW, int mapH, Func<int, int, bool> tileValidator,
+            int spawnTileYOffset = -1)
+        {
+            int anchorTx = (int)(anchor.X / TileMap.TileSize);
+            int anchorTy = (int)(anchor.Y / TileMap.TileSize);
+
+            int placed = 0;
+            int attempts = 0;
+            int maxAttempts = count * 20;
+
+            while (placed < count && attempts < maxAttempts)
+            {
+                attempts++;
+                int dx = rng.Next(-radiusTiles, radiusTiles + 1);
+                int dy = rng.Next(-radiusTiles, radiusTiles + 1);
+                int cx = anchorTx + dx;
+                int cy = anchorTy + dy;
+
+                if (cx < 2 || cx >= mapW - 2 || cy < 2 || cy >= mapH - 2) continue;
+                if (!tileValidator(cx, cy)) continue;
+
+                // Avoid placing exactly on the anchor tile
+                if (dx == 0 && dy == 0) continue;
+
+                int spawnTy = cy + spawnTileYOffset;
+                if (spawnTy < 0 || spawnTy >= mapH) continue;
+
+                placements.Add(new ObjectPlacement
+                {
+                    Type          = type,
+                    PixelPosition = TileMap.TileCenter(cx, spawnTy),
+                });
+                placed++;
             }
         }
     }

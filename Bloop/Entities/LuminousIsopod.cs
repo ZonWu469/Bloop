@@ -73,6 +73,18 @@ namespace Bloop.Entities
         private float   _wanderTimer;
         private const float WanderInterval = 4f;
 
+        // ── Scatter + regroup ──────────────────────────────────────────────────
+        private bool    _isScattered;
+        private float   _scatterTimer;
+        private Vector2 _scatterDirection;
+        private float   _regroupTimer;
+        private Vector2 _regroupTarget;
+        private const float ScatterRange    = 60f;   // px — player detection
+        private const float ScatterDuration = 2f;    // seconds of scatter
+        private const float RegroupDuration = 5f;    // seconds to regroup
+        private const float ScatterSpeed    = 90f;   // px/s while scattering
+        private const float RegroupSpeed    = 40f;   // px/s while regrouping
+
         public LuminousIsopod(Vector2 pixelPosition, AetherWorld world,
             InputManager input, Camera camera)
             : base(ControllableEntityType.LuminousIsopod, pixelPosition, world)
@@ -87,6 +99,9 @@ namespace Bloop.Entities
 
             Skill = new GlowSurgeSkill(this);
         }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Glowing cave crustacean. Scatters when threatened.", "[Q] Control — attaches to player, emits light");
 
         public void SetLightSource(LightSource light)
         {
@@ -185,6 +200,7 @@ namespace Bloop.Entities
                 }
             }
 
+            // ── Skill-triggered flee (different-type effect) ───────────────────
             if (IsFleeing) { SetVelocity(FleeDirection * MovementSpeed * 0.5f); return; }
 
             if (IsFollowing && _attachedPlayer != null)
@@ -197,14 +213,58 @@ namespace Bloop.Entities
                 return;
             }
 
+            // ── Scatter when player approaches ────────────────────────────────
+            if (_isScattered)
+            {
+                _scatterTimer -= dt;
+                SetVelocity(new Vector2(_scatterDirection.X * ScatterSpeed, GetVelocityPixels().Y));
+
+                if (_scatterTimer <= 0f)
+                {
+                    _isScattered  = false;
+                    _regroupTimer = RegroupDuration;
+                    // Regroup toward original wander target
+                    _regroupTarget = _wanderTarget;
+                }
+                return;
+            }
+
+            if (_regroupTimer > 0f)
+            {
+                _regroupTimer -= dt;
+                Vector2 toRegroup = _regroupTarget - PixelPosition;
+                if (toRegroup.LengthSquared() > 4f)
+                    SetVelocity(Vector2.Normalize(toRegroup) * RegroupSpeed);
+                else
+                    SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
+                return;
+            }
+
+            // Detect player proximity to trigger scatter
+            if (HasPlayerPosition && !_isScattered)
+            {
+                float distToPlayer = Vector2.Distance(PixelPosition, PlayerPosition);
+                if (distToPlayer < ScatterRange)
+                {
+                    _isScattered = true;
+                    _scatterTimer = ScatterDuration;
+                    // Scatter away from player
+                    var rng = new Random();
+                    float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                    _scatterDirection = new Vector2((float)Math.Cos(angle), 0f);
+                    return;
+                }
+            }
+
+            // ── Normal wander ─────────────────────────────────────────────────
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {
                 _wanderTimer = WanderInterval;
-                var rng = new Random();
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
+                var rng2 = new Random();
+                float a = (float)(rng2.NextDouble() * Math.PI * 2.0);
                 _wanderTarget = PixelPosition + new Vector2(
-                    (float)Math.Cos(angle) * 40f, (float)Math.Sin(angle) * 20f);
+                    (float)Math.Cos(a) * 40f, (float)Math.Sin(a) * 20f);
             }
 
             Vector2 toWander = _wanderTarget - PixelPosition;

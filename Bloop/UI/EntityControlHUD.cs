@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Bloop.Core;
 using Bloop.Entities;
 using Bloop.Rendering;
+using Bloop.World;
 
 namespace Bloop.UI
 {
@@ -50,6 +52,12 @@ namespace Bloop.UI
         private static readonly Color IsopodIconColor     = new Color(80, 200, 240, 220);
         private static readonly Color SelectingColor      = new Color(180, 255, 180, 200);
 
+        // Awareness indicator colors
+        private static readonly Color ArrowControllableColor = new Color(80, 220, 255, 200);  // cyan
+        private static readonly Color ArrowHostileColor      = new Color(255, 80,  60,  200);  // red
+        private const float ArrowEdgeMargin = 18f;  // pixels from screen edge
+        private const float ArrowSize       = 10f;  // half-length of arrow head
+
         // ── References ─────────────────────────────────────────────────────────
         private readonly EntityControlSystem _controlSystem;
 
@@ -64,12 +72,19 @@ namespace Bloop.UI
         /// Draw all HUD elements. Call inside a SpriteBatch.Begin/End block
         /// WITHOUT camera transform (HUD is in screen space).
         /// </summary>
-        public void Draw(SpriteBatch sb, AssetManager assets, int viewWidth, int viewHeight)
+        public void Draw(SpriteBatch sb, AssetManager assets, int viewWidth, int viewHeight,
+            Camera? camera = null, Level? level = null)
         {
             DrawControlButton(sb, assets, viewWidth, viewHeight);
 
             if (_controlSystem.IsSelecting)
+            {
                 DrawSelectionPrompt(sb, assets, viewWidth, viewHeight);
+
+                // Task 13.3: draw edge arrows pointing to off-screen entities
+                if (camera != null && level != null)
+                    DrawEntityAwarenessIndicators(sb, assets, camera, level, viewWidth, viewHeight);
+            }
 
             if (_controlSystem.IsControlling && _controlSystem.ActiveEntity != null)
                 DrawControlOverlay(sb, assets, _controlSystem.ActiveEntity, viewWidth, viewHeight);
@@ -239,6 +254,106 @@ namespace Bloop.UI
                     : $"[E] Glow Surge ({isopod.Skill.CooldownTimer:F1}s)";
                 assets.DrawStringCentered(sb, skillText, cy + 38f * scaleY, SkillNameColor, 0.6f);
             }
+        }
+
+        // ── Entity awareness indicators (Task 13.3) ────────────────────────────
+
+        /// <summary>
+        /// During selection mode, draw small directional arrows at screen edges
+        /// pointing toward nearby off-screen entities.
+        /// Cyan = controllable (not hostile), Red = hostile (DamagesPlayerOnContact).
+        /// </summary>
+        private void DrawEntityAwarenessIndicators(SpriteBatch sb, AssetManager assets,
+            Camera camera, Level level, int viewWidth, int viewHeight)
+        {
+            Vector2 screenCenter = new Vector2(viewWidth / 2f, viewHeight / 2f);
+
+            foreach (var obj in level.Objects)
+            {
+                if (obj is not ControllableEntity entity) continue;
+                if (entity.IsDestroyed || entity.IsControlled) continue;
+
+                // Project entity world position to screen space
+                Vector2 screenPos = camera.WorldToScreen(entity.PixelPosition);
+
+                // Only draw arrow if entity is off-screen (with a small margin)
+                const float margin = 20f;
+                bool offScreen = screenPos.X < -margin || screenPos.X > viewWidth  + margin ||
+                                 screenPos.Y < -margin || screenPos.Y > viewHeight + margin;
+                if (!offScreen) continue;
+
+                // Choose color based on whether entity is hostile
+                Color arrowColor = entity.DamagesPlayerOnContact
+                    ? ArrowHostileColor
+                    : ArrowControllableColor;
+
+                // Compute direction from screen center to entity screen position
+                Vector2 dir = screenPos - screenCenter;
+                if (dir == Vector2.Zero) continue;
+                dir = Vector2.Normalize(dir);
+
+                // Clamp to screen edge with margin
+                Vector2 edgePos = ClampToScreenEdge(screenCenter, dir, viewWidth, viewHeight, ArrowEdgeMargin);
+
+                // Draw the arrow at the edge
+                DrawEdgeArrow(sb, assets, edgePos, dir, arrowColor);
+            }
+        }
+
+        /// <summary>
+        /// Given a ray from <paramref name="origin"/> in direction <paramref name="dir"/>,
+        /// returns the point where it intersects the screen boundary (inset by <paramref name="margin"/>).
+        /// </summary>
+        private static Vector2 ClampToScreenEdge(Vector2 origin, Vector2 dir,
+            int viewWidth, int viewHeight, float margin)
+        {
+            float left   = margin;
+            float right  = viewWidth  - margin;
+            float top    = margin;
+            float bottom = viewHeight - margin;
+
+            // Parametric ray: P = origin + t * dir
+            // Find smallest positive t that hits any edge
+            float tMin = float.MaxValue;
+
+            if (Math.Abs(dir.X) > 0.0001f)
+            {
+                float t = dir.X > 0 ? (right  - origin.X) / dir.X
+                                     : (left   - origin.X) / dir.X;
+                if (t > 0f && t < tMin) tMin = t;
+            }
+            if (Math.Abs(dir.Y) > 0.0001f)
+            {
+                float t = dir.Y > 0 ? (bottom - origin.Y) / dir.Y
+                                     : (top    - origin.Y) / dir.Y;
+                if (t > 0f && t < tMin) tMin = t;
+            }
+
+            return origin + dir * tMin;
+        }
+
+        /// <summary>
+        /// Draw a small filled triangle (arrow head) at <paramref name="pos"/> pointing in <paramref name="dir"/>.
+        /// </summary>
+        private static void DrawEdgeArrow(SpriteBatch sb, AssetManager assets,
+            Vector2 pos, Vector2 dir, Color color)
+        {
+            // Perpendicular to direction
+            Vector2 perp = new Vector2(-dir.Y, dir.X);
+
+            // Arrow tip and two base corners
+            Vector2 tip    = pos + dir  * ArrowSize;
+            Vector2 baseL  = pos - perp * (ArrowSize * 0.6f);
+            Vector2 baseR  = pos + perp * (ArrowSize * 0.6f);
+
+            // Draw as two lines forming a V (tip → baseL, tip → baseR) plus base line
+            GeometryBatch.DrawLine(sb, assets, tip, baseL, color, 2);
+            GeometryBatch.DrawLine(sb, assets, tip, baseR, color, 2);
+            GeometryBatch.DrawLine(sb, assets, baseL, baseR, color, 2);
+
+            // Small stem line behind the arrow
+            Vector2 stem = pos - dir * (ArrowSize * 0.8f);
+            GeometryBatch.DrawLine(sb, assets, pos, stem, new Color(color.R, color.G, color.B, (byte)(color.A / 2)), 1);
         }
 
         // ── Cooldown arc helper ────────────────────────────────────────────────

@@ -71,6 +71,14 @@ namespace Bloop.Entities
         /// <summary>Movement speed in pixels per second while controlled.</summary>
         public abstract float MovementSpeed { get; }
 
+        // ── Contact damage ─────────────────────────────────────────────────────
+        /// <summary>Whether this entity damages the player on contact when idle (not controlled).</summary>
+        public virtual bool DamagesPlayerOnContact => false;
+        /// <summary>Damage dealt to the player on contact. Only used when DamagesPlayerOnContact is true.</summary>
+        public virtual float ContactDamage => 0f;
+        /// <summary>Stun duration in seconds applied to the player on contact. 0 = no stun.</summary>
+        public virtual float ContactStunDuration => 0f;
+
         // ── Selection highlight ────────────────────────────────────────────────
         /// <summary>True when the entity is highlighted during selection mode (nearest to cursor).</summary>
         public bool IsHighlighted { get; set; }
@@ -108,6 +116,33 @@ namespace Bloop.Entities
         public bool IsInfighting { get; set; }
         /// <summary>Remaining infight time in seconds.</summary>
         public float InfightTimer { get; set; }
+
+        // ── Tooltip info (Task 11) ─────────────────────────────────────────────
+        /// <summary>
+        /// Returns a (description, actionHint) tuple for the hover tooltip.
+        /// Override in each subclass to provide specific information.
+        /// </summary>
+        public virtual (string description, string? actionHint) GetTooltipInfo()
+            => ("A cave creature.", null);
+
+        // ── Player proximity reference (set each frame by Level.Update) ────────
+        /// <summary>
+        /// Last known player position in pixel space. Updated each frame by Level.Update().
+        /// Used by idle AI for aggro/flee proximity checks without a direct player reference.
+        /// </summary>
+        protected Vector2 PlayerPosition { get; private set; } = Vector2.Zero;
+
+        /// <summary>True if a player position has been set this session.</summary>
+        protected bool HasPlayerPosition { get; private set; }
+
+        /// <summary>
+        /// Called by Level.Update() each frame to provide the player's current position.
+        /// </summary>
+        public void SetPlayerReference(Vector2 playerPixelPosition)
+        {
+            PlayerPosition    = playerPixelPosition;
+            HasPlayerPosition = true;
+        }
 
         // ── Constructor ────────────────────────────────────────────────────────
 

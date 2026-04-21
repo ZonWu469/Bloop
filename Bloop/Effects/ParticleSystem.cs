@@ -48,12 +48,13 @@ namespace Bloop.Effects
         private readonly Random _rng;
 
         // ── Colors ─────────────────────────────────────────────────────────────
-        private static readonly Color DustColor      = new Color(200, 190, 170);
-        private static readonly Color RainColor      = new Color(140, 180, 220);
-        private static readonly Color WaterfallColor = new Color(120, 170, 220);
-        private static readonly Color MistColor      = new Color(160, 200, 230);
-        private static readonly Color DripColor      = new Color(100, 150, 200);
-        private static readonly Color SporeColor     = new Color(120, 240, 160);
+        private static readonly Color DustColor         = new Color(200, 190, 170);
+        private static readonly Color RainColor         = new Color(140, 180, 220);
+        private static readonly Color WaterfallColor    = new Color(120, 170, 220);
+        private static readonly Color MistColor         = new Color(160, 200, 230);
+        private static readonly Color DripColor         = new Color(100, 150, 200);
+        private static readonly Color SporeColor        = new Color(120, 240, 160);
+        private static readonly Color WallFrictionColor = new Color(180, 170, 160);
 
         // ── Constructor ────────────────────────────────────────────────────────
 
@@ -406,6 +407,40 @@ namespace Bloop.Effects
                 Lifetime = life,
                 Age      = life,
             });
+        }
+
+        // ── On-demand emitters (called externally) ─────────────────────────────
+
+        /// <summary>
+        /// Emit 1-3 grey-white smoke puffs at the wall contact point.
+        /// Call each frame while the player is sliding down a wall.
+        /// fallSpeed: downward speed in pixels/second — scales emission count.
+        /// </summary>
+        public void EmitWallFriction(Vector2 contactPoint, float fallSpeed)
+        {
+            // Scale count: 1 puff at 20 px/s, up to 3 at 200+ px/s
+            int count = (int)MathHelper.Clamp(fallSpeed / 80f, 1f, 3f);
+            for (int i = 0; i < count; i++)
+            {
+                float life = 0.3f + (float)_rng.NextDouble() * 0.2f;
+                // Drift slightly away from wall (random X) and upward
+                float driftX = ((float)_rng.NextDouble() - 0.5f) * 20f;
+                float driftY = -(10f + (float)_rng.NextDouble() * 20f);
+                Emit(new Particle
+                {
+                    Kind     = ParticleKind.WallFriction,
+                    Position = new Vector2(
+                        contactPoint.X + ((float)_rng.NextDouble() - 0.5f) * 4f,
+                        contactPoint.Y + ((float)_rng.NextDouble() - 0.5f) * 8f),
+                    Velocity = new Vector2(driftX, driftY),
+                    Color    = WallFrictionColor,
+                    Width    = 3f,
+                    Height   = 3f,
+                    Alpha    = 1f,
+                    Lifetime = life,
+                    Age      = life,
+                });
+            }
         }
 
         // ── Pool management ────────────────────────────────────────────────────

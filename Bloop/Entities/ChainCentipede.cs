@@ -29,6 +29,11 @@ namespace Bloop.Entities
         public override bool   CanWallClimb    => true;
         public override bool   CanCeilingClimb => true;
 
+        // ── Contact damage ─────────────────────────────────────────────────────
+        public override bool  DamagesPlayerOnContact => true;
+        public override float ContactDamage          => 12f;
+        public override float ContactStunDuration    => 0.8f;
+
         // ── Pulse state ────────────────────────────────────────────────────────
         public bool  PulseActive  { get; private set; }
         public float PulseRadius  { get; private set; }
@@ -41,6 +46,15 @@ namespace Bloop.Entities
         private Vector2 _wanderTarget;
         private float   _wanderTimer;
         private const float WanderInterval = 2.5f;
+
+        // ── Ceiling patrol + drop ambush ───────────────────────────────────────
+        private float _ceilingPatrolDir = 1f;   // +1 right, -1 left
+        private bool  _isDropping;
+        private float _dropTimer;
+        private const float DropRange    = 100f;  // px — player detection below
+        private const float DropSpeed    = 150f;  // px/s during drop
+        private const float DropDuration = 0.6f;  // seconds of drop
+        private const float CeilingPatrolSpeed = 80f;
 
         public ChainCentipede(Vector2 pixelPosition, AetherWorld world, InputManager input)
             : base(ControllableEntityType.ChainCentipede, pixelPosition, world)
@@ -55,6 +69,10 @@ namespace Bloop.Entities
         }
 
         protected override void OnControlStart() { }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Armoured ceiling predator. Drops on prey from above.", "[Q] Control — 7s ceiling crawl");
+
         protected override void OnControlEnd()
         {
             _wanderTarget = PixelPosition;
@@ -111,21 +129,53 @@ namespace Bloop.Entities
                 return;
             }
 
+            // ── Drop ambush: player directly below within DropRange ────────────
+            if (_isDropping)
+            {
+                _dropTimer -= dt;
+                SetVelocity(new Vector2(0f, DropSpeed));
+                if (_dropTimer <= 0f)
+                {
+                    _isDropping  = false;
+                    // Scurry back up — use negative Y velocity burst
+                    SetVelocity(new Vector2(0f, -DropSpeed * 1.5f));
+                    _wanderTimer = WanderInterval;
+                }
+                return;
+            }
+
+            if (HasPlayerPosition)
+            {
+                float dx = MathF.Abs(PlayerPosition.X - PixelPosition.X);
+                float dy = PlayerPosition.Y - PixelPosition.Y; // positive = player below
+                if (dx < 20f && dy > 0f && dy < DropRange)
+                {
+                    _isDropping = true;
+                    _dropTimer  = DropDuration;
+                    return;
+                }
+            }
+
+            // ── Ceiling patrol: move horizontally at ceiling level ─────────────
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {
                 _wanderTimer = WanderInterval;
                 var rng = new Random();
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                _wanderTarget = PixelPosition + new Vector2(
-                    (float)Math.Cos(angle) * 50f, (float)Math.Sin(angle) * 20f);
+                if (rng.NextDouble() < 0.4)
+                    _ceilingPatrolDir = -_ceilingPatrolDir;
+                _wanderTarget = PixelPosition + new Vector2(_ceilingPatrolDir * 60f, 0f);
             }
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(Vector2.Normalize(toWander) * MovementSpeed * 0.5f);
+                SetVelocity(new Vector2(MathF.Sign(toWander.X) * CeilingPatrolSpeed, GetVelocityPixels().Y));
             else
+            {
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
+                _ceilingPatrolDir = -_ceilingPatrolDir;
+                _wanderTimer = 0f;
+            }
         }
 
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)

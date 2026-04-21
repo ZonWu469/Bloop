@@ -25,6 +25,15 @@ namespace Bloop.Rendering
         private static readonly Color SkillReadyColor        = new Color(255, 200, 60, 220);
         private static readonly Color SkillCooldownColor     = new Color(100, 100, 100, 180);
         private static readonly Color RangeCircleColor       = new Color(180, 255, 180, 60);
+        private static readonly Color DangerAuraColor        = new Color(255, 80, 40, 60);
+        private static readonly Color DangerSparkColor       = new Color(255, 120, 60);
+
+        // ── Player position for danger proximity scaling (set each frame by GameplayScreen) ──
+        /// <summary>
+        /// Set this each frame before drawing entities so danger indicators can
+        /// scale their intensity based on distance to the player.
+        /// </summary>
+        public static Vector2 PlayerPositionForDanger { get; set; } = Vector2.Zero;
 
         // ── Echo Bat ───────────────────────────────────────────────────────────
 
@@ -36,6 +45,9 @@ namespace Bloop.Rendering
         public static void DrawEchoBat(SpriteBatch sb, AssetManager assets, EchoBat bat)
         {
             Vector2 pos = bat.PixelPosition;
+
+            // ── Danger indicator (hostile when idle) ───────────────────────────
+            DrawDangerIndicator(sb, assets, bat, EchoBat.WidthPx, EchoBat.HeightPx);
 
             // ── Selection / control highlights ─────────────────────────────────
             DrawEntityHighlight(sb, assets, bat, EchoBat.WidthPx, EchoBat.HeightPx);
@@ -98,6 +110,33 @@ namespace Bloop.Rendering
             GeometryBatch.DrawCircleApprox(sb, assets,
                 new Vector2(pos.X + eyeOff, pos.Y - 1f), 1.5f, eyeColor, 4);
 
+            // ── Echolocation arcs (Task 13.4 — ambient visual sound) ───────────
+            // Draw 2-3 concentric arcs from head when idle, suggesting sonar pings
+            if (!bat.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                for (int arc = 0; arc < 3; arc++)
+                {
+                    float arcPhase = (t * 0.8f + arc * 0.4f) % 1f;
+                    float arcR     = 8f + arcPhase * 28f;
+                    float arcAlpha = (1f - arcPhase) * 0.35f;
+                    if (arcAlpha > 0.02f)
+                    {
+                        var arcColor = new Color(140, 200, 255, (int)(arcAlpha * 255));
+                        // Draw a partial arc (front-facing semicircle)
+                        int arcSegs = 8;
+                        for (int s = 0; s < arcSegs; s++)
+                        {
+                            float a0 = -MathHelper.PiOver2 + (s / (float)arcSegs) * MathHelper.Pi;
+                            float a1 = -MathHelper.PiOver2 + ((s + 0.8f) / arcSegs) * MathHelper.Pi;
+                            Vector2 p0 = pos + new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * arcR;
+                            Vector2 p1 = pos + new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * arcR;
+                            GeometryBatch.DrawLine(sb, assets, p0, p1, arcColor, 1f);
+                        }
+                    }
+                }
+            }
+
             // ── Control timer bar ──────────────────────────────────────────────
             if (bat.IsControlled)
                 DrawControlTimerBar(sb, assets, bat, EchoBat.WidthPx);
@@ -113,6 +152,7 @@ namespace Bloop.Rendering
             SilkWeaverSpider spider)
         {
             Vector2 pos = spider.PixelPosition;
+            DrawDangerIndicator(sb, assets, spider, SilkWeaverSpider.WidthPx, SilkWeaverSpider.HeightPx);
             DrawEntityHighlight(sb, assets, spider, SilkWeaverSpider.WidthPx, SilkWeaverSpider.HeightPx);
 
             var bodyColor = spider.IsControlled
@@ -164,6 +204,7 @@ namespace Bloop.Rendering
             ChainCentipede centipede)
         {
             Vector2 pos = centipede.PixelPosition;
+            DrawDangerIndicator(sb, assets, centipede, ChainCentipede.WidthPx, ChainCentipede.HeightPx);
             DrawEntityHighlight(sb, assets, centipede, ChainCentipede.WidthPx, ChainCentipede.HeightPx);
 
             var segColor = centipede.IsControlled
@@ -204,6 +245,28 @@ namespace Bloop.Rendering
                 float alpha = 1f - centipede.PulseRadius / ChainCentipede.PulseMaxRadius;
                 var pulseColor = new Color(255, 160, 40, (int)(alpha * 140));
                 GeometryBatch.DrawCircleOutline(sb, assets, pos, centipede.PulseRadius, pulseColor, 2);
+            }
+
+            // ── Vibration lines (Task 13.4 — ambient visual sound) ─────────────
+            // Tiny horizontal vibration streaks when moving, suggesting chittering
+            if (!centipede.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                for (int v = 0; v < 4; v++)
+                {
+                    float vPhase = (t * 3f + v * 0.25f) % 1f;
+                    float vAlpha = MathF.Sin(vPhase * MathF.PI) * 0.3f;
+                    if (vAlpha > 0.02f)
+                    {
+                        float vx = pos.X - ChainCentipede.WidthPx * 0.4f + v * (ChainCentipede.WidthPx * 0.25f);
+                        float vy = pos.Y + ChainCentipede.HeightPx * 0.8f;
+                        float vLen = 3f + MathF.Sin(t * 8f + v) * 1.5f;
+                        GeometryBatch.DrawLine(sb, assets,
+                            new Vector2(vx - vLen, vy),
+                            new Vector2(vx + vLen, vy),
+                            new Color(200, 140, 60, (int)(vAlpha * 255)), 1f);
+                    }
+                }
             }
 
             if (centipede.IsControlled)
@@ -249,6 +312,21 @@ namespace Bloop.Rendering
                 GeometryBatch.DrawCircleApprox(sb, assets, pos, worm.FlashRadius, flashColor, 16);
             }
 
+            // ── Synchronized pulse rings (Task 13.4 — ambient visual sound) ────
+            // Gentle expanding rings synchronized via SyncPhase across nearby glowworms
+            if (!worm.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                float syncT = (t * 0.5f + worm.SyncPhase / (MathF.PI * 2f)) % 1f;
+                float ringR  = syncT * 22f;
+                float ringA  = (1f - syncT) * 0.25f;
+                if (ringA > 0.01f)
+                {
+                    GeometryBatch.DrawCircleOutline(sb, assets, pos, ringR,
+                        new Color(160, 255, 100, (int)(ringA * 255)), 8);
+                }
+            }
+
             if (worm.IsControlled)
             {
                 DrawControlTimerBar(sb, assets, worm, LuminescentGlowworm.WidthPx);
@@ -262,6 +340,7 @@ namespace Bloop.Rendering
             DeepBurrowWorm worm)
         {
             Vector2 pos = worm.PixelPosition;
+            DrawDangerIndicator(sb, assets, worm, DeepBurrowWorm.WidthPx, DeepBurrowWorm.HeightPx);
             DrawEntityHighlight(sb, assets, worm, DeepBurrowWorm.WidthPx, DeepBurrowWorm.HeightPx);
 
             if (worm.IsBurrowing)
@@ -421,6 +500,54 @@ namespace Bloop.Rendering
         }
 
         // ── Shared helpers ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Draw a pulsing danger aura and orbiting warning sparks around a hostile entity.
+        /// Only shown when the entity is not controlled. Intensity scales with proximity to player.
+        /// </summary>
+        public static void DrawDangerIndicator(SpriteBatch sb, AssetManager assets,
+            ControllableEntity entity, float widthPx, float heightPx)
+        {
+            if (!entity.DamagesPlayerOnContact || entity.IsControlled) return;
+
+            Vector2 pos = entity.PixelPosition;
+            float t = AnimationClock.Time;
+
+            // Proximity-based intensity: full at 80px, zero at 200px
+            float dist = Vector2.Distance(pos, PlayerPositionForDanger);
+            float proximityFactor = MathHelper.Clamp(1f - (dist - 80f) / 120f, 0f, 1f);
+
+            // Pulsing aura radius
+            float pulse = 0.5f + 0.5f * (float)Math.Sin(t * 3.5f);
+            float auraRadius = Math.Max(widthPx, heightPx) * 0.8f + pulse * 4f;
+            float auraAlpha = (0.3f + pulse * 0.3f) * (0.4f + proximityFactor * 0.6f);
+
+            var auraColor = new Color(
+                DangerAuraColor.R,
+                DangerAuraColor.G,
+                DangerAuraColor.B,
+                (int)(DangerAuraColor.A * auraAlpha * 2f));
+            GeometryBatch.DrawCircleApprox(sb, assets, pos, auraRadius, auraColor, 10);
+
+            // Orbiting warning sparks (3 dots)
+            int sparkCount = 3;
+            for (int i = 0; i < sparkCount; i++)
+            {
+                float angle = t * 2.2f + i * (MathF.PI * 2f / sparkCount);
+                float orbitR = auraRadius + 3f;
+                var sparkPos = new Vector2(
+                    pos.X + MathF.Cos(angle) * orbitR,
+                    pos.Y + MathF.Sin(angle) * orbitR * 0.6f); // flatten orbit vertically
+
+                float sparkAlpha = (0.6f + 0.4f * (float)Math.Sin(t * 4f + i)) * (0.3f + proximityFactor * 0.7f);
+                var sparkColor = new Color(
+                    DangerSparkColor.R,
+                    DangerSparkColor.G,
+                    DangerSparkColor.B,
+                    (int)(255 * sparkAlpha));
+                GeometryBatch.DrawCircleApprox(sb, assets, sparkPos, 2f, sparkColor, 4);
+            }
+        }
 
         /// <summary>
         /// Draw the selection/control highlight outline around an entity.

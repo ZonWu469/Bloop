@@ -20,6 +20,74 @@ namespace Bloop.Rendering
     public static class WorldObjectRenderer
     {
         // ══════════════════════════════════════════════════════════════════════
+        // VISUAL VARIETY — Per-instance color/shape modulation
+        // ══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Per-instance visual variation derived from a deterministic seed.
+        /// Passed to each Draw* method to modulate color, scale, and shape.
+        /// </summary>
+        public struct VisualVariant
+        {
+            /// <summary>Hue shift in degrees, ±15. Applied via ShiftHue().</summary>
+            public float HueShift;
+            /// <summary>Scale multiplier in [0.9, 1.1].</summary>
+            public float Scale;
+            /// <summary>Shape variant index 0-2 (e.g., lobe/petal/tendril count offset).</summary>
+            public int ShapeVariant;
+            /// <summary>Animation phase offset in [0, 2π].</summary>
+            public float PhaseOffset;
+
+            /// <summary>Derive a VisualVariant from an integer seed (e.g., tile hash).</summary>
+            public static VisualVariant FromSeed(int seed)
+            {
+                return new VisualVariant
+                {
+                    HueShift     = NoiseHelpers.HashSigned(seed)     * 15f,
+                    Scale        = 0.9f + NoiseHelpers.Hash01(seed + 1) * 0.2f,
+                    ShapeVariant = Math.Abs(seed % 3),
+                    PhaseOffset  = NoiseHelpers.Hash01(seed + 2) * MathF.PI * 2f,
+                };
+            }
+
+            /// <summary>Neutral variant with no modulation.</summary>
+            public static VisualVariant Default => new VisualVariant
+            {
+                HueShift = 0f, Scale = 1f, ShapeVariant = 0, PhaseOffset = 0f
+            };
+        }
+
+        /// <summary>
+        /// Approximate hue shift by lerping between a warm and cool tint of the base color.
+        /// degrees > 0 → warmer (toward red/yellow), degrees < 0 → cooler (toward blue/teal).
+        /// </summary>
+        private static Color ShiftHue(Color baseColor, float degrees)
+        {
+            float t = Math.Clamp(degrees / 30f, -1f, 1f); // normalize to [-1, 1]
+            if (t >= 0f)
+            {
+                // Warm shift: lerp toward a slightly more saturated warm version
+                var warm = new Color(
+                    Math.Min(255, baseColor.R + (int)(30 * t)),
+                    Math.Max(0,   baseColor.G - (int)(15 * t)),
+                    Math.Max(0,   baseColor.B - (int)(20 * t)),
+                    baseColor.A);
+                return warm;
+            }
+            else
+            {
+                float u = -t;
+                // Cool shift: lerp toward a more blue/teal version
+                var cool = new Color(
+                    Math.Max(0,   baseColor.R - (int)(20 * u)),
+                    Math.Min(255, baseColor.G + (int)(10 * u)),
+                    Math.Min(255, baseColor.B + (int)(30 * u)),
+                    baseColor.A);
+                return cool;
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
         // DISAPPEARING PLATFORM — Living Fungal Shelf
         // ══════════════════════════════════════════════════════════════════════
 
@@ -160,6 +228,9 @@ namespace Bloop.Rendering
             float t = AnimationClock.Time;
             int seed = (int)(pixelPos.X * 13 + pixelPos.Y * 7);
 
+            // Per-instance visual variety
+            var variant = VisualVariant.FromSeed(seed);
+
             if (!isLit)
             {
                 // Unlit: faint flesh silhouette + rare blink.
@@ -191,25 +262,27 @@ namespace Bloop.Rendering
                 rings: 5, segments: 10);
 
             // 2. Fleshy outer blob (breathing)
-            OrganicPrimitives.DrawBlob(sb, assets, pixelPos, 11f,
+            OrganicPrimitives.DrawBlob(sb, assets, pixelPos, 11f * variant.Scale,
                 Color.Lerp(SDFlesh, SDFleshIn, heart * 0.5f),
                 lobeCount: 3, time: t * 1.1f, wobbleAmp: 0.12f, seed: seed);
             // Inner flesh highlight
-            OrganicPrimitives.DrawBlob(sb, assets, pixelPos, 8f,
+            OrganicPrimitives.DrawBlob(sb, assets, pixelPos, 8f * variant.Scale,
                 SDFleshIn, lobeCount: 4, time: -t * 0.9f, wobbleAmp: 0.08f, seed: seed + 17);
 
-            // 3. Vein network pulsing with heartbeat
+            // 3. Vein network — count varies by ShapeVariant (4, 5, or 6 veins)
             OrganicPrimitives.DrawVeinNetwork(sb, assets, pixelPos,
                 SDVein * (0.55f + heart * 0.45f),
-                branchCount: 5, length: 11f,
+                branchCount: 4 + variant.ShapeVariant, length: 11f,
                 thickness: 1f, time: t, seed: seed);
 
-            // 4. Iris (gradient disk that constricts when proximity high)
+            // 4. Iris — color shifts red↔magenta via HueShift
             float irisR = 4.5f - clampProx * 1.8f + heart * 0.5f;
+            Color irisColor    = ShiftHue(SDIris,    variant.HueShift);
+            Color irisHotColor = ShiftHue(SDIrisHot, variant.HueShift);
             OrganicPrimitives.DrawGradientDisk(sb, assets, pixelPos,
                 rIn: 1f, rOut: MathF.Max(1.5f, irisR),
-                innerColor: Color.Lerp(SDIris, SDIrisHot, heart),
-                outerColor: SDIris * 0.4f,
+                innerColor: Color.Lerp(irisColor, irisHotColor, heart),
+                outerColor: irisColor * 0.4f,
                 rings: 4, segments: 10);
 
             // 5. Pupil — dilates slightly with heartbeat
@@ -260,21 +333,27 @@ namespace Bloop.Rendering
             float t = AnimationClock.Time;
             int seed = (int)(pixelPos.X * 11 + pixelPos.Y * 7);
 
+            // Per-instance visual variety
+            var variant = VisualVariant.FromSeed(seed);
+            float tWithPhase = t + variant.PhaseOffset * 0.1f;
+
             // 1. Aura (wider, softer for activated)
             if (isActivated)
             {
                 OrganicPrimitives.DrawGradientDisk(sb, assets,
                     pixelPos + new Vector2(0, 0),
-                    rIn: 6f, rOut: 28f,
+                    rIn: 6f, rOut: 28f * variant.Scale,
                     innerColor: GVAura * 0.22f,
                     outerColor: GVAura * 0f,
                     rings: 5, segments: 12);
             }
 
             // 2. Stem as 3 stacked cubic beziers swaying via ValueNoise1D
-            Color stemColor = isActivated
+            // Hue-shifted stem color for variety (green↔teal)
+            Color stemBase = isActivated
                 ? Color.Lerp(GVStemOn, GVStemHot, AnimationClock.Pulse(0.8f) * 0.3f)
                 : Color.Lerp(GVStemOff, GVStemOn, illuminationProgress);
+            Color stemColor = ShiftHue(stemBase, variant.HueShift);
             float stemThick = isActivated ? 2.5f : 2f;
             float swayAmp   = isActivated ? 4f : 2f;
 
@@ -285,22 +364,20 @@ namespace Bloop.Rendering
             {
                 float y0 = pixelPos.Y + halfH - s * sectionH;
                 float y1 = y0 - sectionH;
-                // Sway positions follow ValueNoise for organic motion
-                float n0 = NoiseHelpers.ValueNoise1DSigned(t * 0.6f + s * 0.7f, seed);
-                float n1 = NoiseHelpers.ValueNoise1DSigned(t * 0.6f + s * 0.7f + 0.5f, seed + 97);
+                float n0 = NoiseHelpers.ValueNoise1DSigned(tWithPhase * 0.6f + s * 0.7f, seed);
+                float n1 = NoiseHelpers.ValueNoise1DSigned(tWithPhase * 0.6f + s * 0.7f + 0.5f, seed + 97);
                 Vector2 p0 = new Vector2(pixelPos.X + n0 * swayAmp, y0);
                 Vector2 p3 = new Vector2(pixelPos.X + n1 * swayAmp, y1);
                 Vector2 c1 = p0 + new Vector2(NoiseHelpers.HashSigned(seed + s * 31) * swayAmp * 2f, -sectionH / 3f);
                 Vector2 c2 = p3 + new Vector2(NoiseHelpers.HashSigned(seed + s * 53) * swayAmp * 2f,  sectionH / 3f);
                 OrganicPrimitives.DrawBezier(sb, assets, p0, c1, c2, p3,
                     stemColor, stemThick, segments: 10);
-                // Save the top of this section for placement reference
                 if (s == stemSections - 1) prevBottom = p3;
                 else prevBottom = p3;
             }
 
-            // 3. Leaf fronds — jittered noisy lines
-            int leafCount = 4 + heightPx / 32;
+            // 3. Leaf fronds — count varies by ShapeVariant (4, 5, or 6 + height factor)
+            int leafCount = 4 + variant.ShapeVariant + heightPx / 32;
             for (int l = 0; l < leafCount; l++)
             {
                 float lf = (l + 0.5f) / leafCount;
@@ -367,6 +444,19 @@ namespace Bloop.Rendering
                     }
                 }
             }
+
+            // 6. Illumination progress bar — shown when partially lit (player nearby with lantern)
+            if (!isActivated && illuminationProgress > 0f && illuminationProgress < 1f)
+            {
+                WorldProgressBar.Draw(sb, assets,
+                    new Vector2(pixelPos.X, pixelPos.Y - halfH),
+                    illuminationProgress,
+                    width: 28f, height: 3f,
+                    fgColor: GVStemOn,
+                    bgColor: new Color(8, 20, 16, 160),
+                    label: null,
+                    yOffset: -10f);
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -391,6 +481,10 @@ namespace Bloop.Rendering
             int halfH = heightPx / 2;
             int dw    = isRetracting ? Math.Max(2, (int)(30 * (1f - retractProgress))) : 30;
 
+            // Per-instance visual variety
+            int seedBase = tileHash;
+            var variant  = VisualVariant.FromSeed(seedBase);
+
             // Warning shake — increasing with timer
             float shakeAmp = idleWarningFraction * 2f + (isRetracting ? 2f : 0f);
             float shakeX   = MathF.Sin(t * (10f + idleWarningFraction * 30f) + tileHash) * shakeAmp;
@@ -398,7 +492,8 @@ namespace Bloop.Rendering
             int cx = (int)(pixelPos.X + shakeX);
             int cy = (int)pixelPos.Y;
 
-            Color fill = isRetracting ? RCRet : RCTorso;
+            // Hue-shifted fill color for variety (brown↔reddish-brown)
+            Color fill = ShiftHue(isRetracting ? RCRet : RCTorso, variant.HueShift);
 
             // 1. Torso — stacked blobs (tapering) forming a sinewy column
             int blobsY = Math.Max(2, heightPx / 14);
@@ -406,7 +501,7 @@ namespace Bloop.Rendering
             {
                 float tt = (i + 0.5f) / blobsY;
                 float by = cy - halfH + tt * heightPx;
-                float bw = dw * 0.5f * (1f - MathF.Abs(tt - 0.5f) * 0.3f);
+                float bw = dw * 0.5f * variant.Scale * (1f - MathF.Abs(tt - 0.5f) * 0.3f);
                 int seed = tileHash + i * 29;
                 OrganicPrimitives.DrawBlob(sb, assets,
                     new Vector2(cx, by), bw,
@@ -428,10 +523,10 @@ namespace Bloop.Rendering
                 }
             }
 
-            // 3. Writhing tendrils — bezier curves with noise-driven control points
+            // 3. Writhing tendrils — count varies by ShapeVariant (4, 5, or 6)
             if (!isRetracting)
             {
-                int tendrils = 4 + (tileHash % 3);
+                int tendrils = 4 + variant.ShapeVariant;
                 for (int tr = 0; tr < tendrils; tr++)
                 {
                     int ts = tileHash + tr * 23;
@@ -515,24 +610,30 @@ namespace Bloop.Rendering
 
             int seed = (int)(pixelPos.X * 11 + pixelPos.Y * 13);
 
-            // 1. Aura (softer; grows when player inside)
-            float auraR = 20f + (playerInZone ? 12f * breath : 4f * breath);
+            // Per-instance visual variety
+            var variant = VisualVariant.FromSeed(seed);
+            float tWithPhase = t + variant.PhaseOffset * 0.08f;
+
+            // 1. Aura (softer; grows when player inside) — scaled by variant
+            float auraR = (20f + (playerInZone ? 12f * breath : 4f * breath)) * variant.Scale;
             OrganicPrimitives.DrawGradientDisk(sb, assets, pixelPos,
                 rIn: 6f, rOut: auraR,
                 innerColor: VFAura * (onCooldown ? 0.04f : 0.18f + breath * 0.08f),
                 outerColor: VFAura * 0f,
                 rings: 5, segments: 12);
 
-            // 2. Stem (bezier with slow sway)
-            float stemSway = AnimationClock.Sway(2f, 0.6f);
+            // 2. Stem (bezier with slow sway) — curvature varies by ShapeVariant
+            float stemSwayCurve = 0.6f + variant.ShapeVariant * 0.15f;
+            float stemSway = AnimationClock.Sway(2f, stemSwayCurve, variant.PhaseOffset);
             Vector2 stemBase = new Vector2(pixelPos.X, pixelPos.Y + 22);
             Vector2 stemTop  = new Vector2(pixelPos.X + stemSway * 0.3f, pixelPos.Y - 2);
             Vector2 stemCtrl = new Vector2(pixelPos.X + stemSway, pixelPos.Y + 10);
+            Color stemColor = ShiftHue(onCooldown ? VFCool : VFStem, variant.HueShift);
             OrganicPrimitives.DrawBezierQuad(sb, assets, stemBase, stemCtrl, stemTop,
-                (onCooldown ? VFCool : VFStem) * dim, 3f, 10);
+                stemColor * dim, 3f, 10);
 
-            // 3. Stem leaves
-            Color lc = (onCooldown ? VFCool : VFLeaf) * dim;
+            // 3. Stem leaves — hue-shifted
+            Color lc = ShiftHue(onCooldown ? VFCool : VFLeaf, variant.HueShift) * dim;
             Vector2 leafPivot1 = new Vector2(pixelPos.X + stemSway * 0.5f + 1, pixelPos.Y + 8);
             Vector2 leafPivot2 = new Vector2(pixelPos.X + stemSway * 0.7f - 1, pixelPos.Y + 16);
             OrganicPrimitives.DrawBezierQuad(sb, assets,
@@ -546,27 +647,31 @@ namespace Bloop.Rendering
                 leafPivot2 + new Vector2(-9, 2),
                 lc, 2.5f, 6);
 
-            // 4. Petals — 6 blob petals breathing open
+            // 4. Petals — count varies by ShapeVariant (5, 6, or 7), hue-shifted
             Vector2 flowerCtr = stemTop + new Vector2(0, -2);
-            int petalCount = 6;
+            int petalCount = 5 + variant.ShapeVariant;
+            Color petalOutColor = ShiftHue(VFPetalOut, variant.HueShift);
+            Color petalInColor  = ShiftHue(VFPetalIn,  variant.HueShift);
             for (int i = 0; i < petalCount; i++)
             {
-                float a = (i / (float)petalCount) * MathHelper.TwoPi + t * 0.15f;
+                float a = (i / (float)petalCount) * MathHelper.TwoPi + tWithPhase * 0.15f;
                 float gap = 5f + open * 6f;
                 Vector2 pc = flowerCtr + new Vector2(MathF.Cos(a), MathF.Sin(a)) * gap;
-                Color pcol = Color.Lerp(VFPetalOut, VFPetalIn, open * 0.6f) * dim;
-                float petalR = 4f + open * 1.6f;
+                Color pcol = Color.Lerp(petalOutColor, petalInColor, open * 0.6f) * dim;
+                float petalR = (4f + open * 1.6f) * variant.Scale;
                 OrganicPrimitives.DrawBlob(sb, assets, pc, petalR,
-                    pcol, lobeCount: 2, time: t * 0.8f + a,
+                    pcol, lobeCount: 2, time: tWithPhase * 0.8f + a,
                     wobbleAmp: 0.18f, seed: seed + i * 11);
             }
 
-            // 5. Center — gradient disk (dilates)
-            float centerR = 4.5f + open * 1.2f;
+            // 5. Center — gradient disk (dilates), hue-shifted
+            float centerR = (4.5f + open * 1.2f) * variant.Scale;
+            Color ctrColor = ShiftHue(onCooldown ? VFCool : VFCtr, variant.HueShift);
+            Color ctrRimColor = ShiftHue(onCooldown ? VFCool : VFPetalIn, variant.HueShift);
             OrganicPrimitives.DrawGradientDisk(sb, assets, flowerCtr,
                 rIn: 0.5f, rOut: centerR,
-                innerColor: (onCooldown ? VFCool : VFCtr) * dim,
-                outerColor: (onCooldown ? VFCool : VFPetalIn) * dim * 0.3f,
+                innerColor: ctrColor * dim,
+                outerColor: ctrRimColor * dim * 0.3f,
                 rings: 4, segments: 10);
 
             // 6. Heat shimmer — handled by emitter on the object; draw small rising streaks here too
@@ -590,23 +695,25 @@ namespace Bloop.Rendering
                 }
             }
 
-            // 7. Progress ring — segmented around the center
+            // 7. Progress bar (WorldProgressBar) — shown when player is standing in zone
             if (playerInZone && !onCooldown && standingProgress > 0f)
             {
-                int segs = 16;
-                int lit  = (int)(standingProgress * segs);
-                float rR = 10f;
-                for (int i = 0; i < segs; i++)
-                {
-                    float a0 = (i / (float)segs) * MathHelper.TwoPi - MathHelper.PiOver2;
-                    float a1 = ((i + 0.65f) / segs) * MathHelper.TwoPi - MathHelper.PiOver2;
-                    Vector2 p0 = flowerCtr + new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * rR;
-                    Vector2 p1 = flowerCtr + new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * rR;
-                    Color cc = (i < lit)
-                        ? VFProg * (0.75f + AnimationClock.Pulse(4f, i * 0.2f) * 0.25f)
-                        : new Color(20, 40, 30) * 0.7f;
-                    GeometryBatch.DrawLine(sb, assets, p0, p1, cc, 2f);
-                }
+                WorldProgressBar.Draw(sb, assets,
+                    pixelPos, standingProgress,
+                    width: 36f, height: 4f,
+                    fgColor: VFProg,
+                    bgColor: new Color(10, 25, 18, 180),
+                    label: standingProgress < 1f ? "Recharging..." : null,
+                    yOffset: -32f);
+            }
+
+            // 8. Cooldown overlay — shown when on cooldown
+            if (onCooldown)
+            {
+                WorldProgressBar.DrawCooldownOverlay(sb, assets,
+                    flowerCtr, cooldownProgress01: 0f,
+                    radius: 14f * variant.Scale,
+                    overlayColor: VFCool);
             }
         }
 
@@ -625,10 +732,16 @@ namespace Bloop.Rendering
             float t = AnimationClock.Time;
             int seed = (int)(pixelPos.X * 3 + pixelPos.Y * 7);
 
+            // Per-instance visual variety
+            var variant = VisualVariant.FromSeed(seed);
+            float tWithPhase = t + variant.PhaseOffset * 0.05f;
+
             float pulse = AnimationClock.Pulse(rarity == ItemRarity.Rare ? 3f : 2f);
             float breath = AnimationClock.Sway(rarity == ItemRarity.Rare ? 2f : 1f, 1.4f);
 
+            // Base fill with hue shift (yellow-green ↔ lime)
             Color fill = isPoisonous ? CLPoison : CLNormal;
+            fill = ShiftHue(fill, variant.HueShift);
             if (rarity == ItemRarity.Rare)
                 fill = Color.Lerp(fill, new Color(230, 255, 100), 0.4f);
             else if (rarity == ItemRarity.Uncommon)
@@ -637,7 +750,7 @@ namespace Bloop.Rendering
             // 1. Halo (uncommon/rare)
             if (rarity != ItemRarity.Common)
             {
-                float haloR = rarity == ItemRarity.Rare ? 18f : 12f;
+                float haloR = (rarity == ItemRarity.Rare ? 18f : 12f) * variant.Scale;
                 OrganicPrimitives.DrawGradientDisk(sb, assets, pixelPos,
                     rIn: 4f, rOut: haloR + breath,
                     innerColor: CLGlow * (rarity == ItemRarity.Rare ? 0.35f : 0.22f),
@@ -645,15 +758,17 @@ namespace Bloop.Rendering
                     rings: 4, segments: 10);
             }
 
-            // 2. Base concentric rosette blobs — breathing together
-            float baseR = 7.5f + breath * 0.8f;
+            // 2. Base concentric rosette blobs — breathing together, scaled
+            float baseR = (7.5f + breath * 0.8f) * variant.Scale;
+            // Lobe count varies by ShapeVariant (4, 5, or 6 lobes)
+            int lobeCount = 4 + variant.ShapeVariant;
             OrganicPrimitives.DrawBlob(sb, assets, pixelPos, baseR + 1.5f,
-                CLDark * 0.8f, lobeCount: 5, time: t * 0.6f, wobbleAmp: 0.14f, seed: seed);
+                CLDark * 0.8f, lobeCount: lobeCount, time: tWithPhase * 0.6f, wobbleAmp: 0.14f, seed: seed);
             OrganicPrimitives.DrawBlob(sb, assets, pixelPos, baseR,
-                fill, lobeCount: 5, time: t * 0.9f, wobbleAmp: 0.1f, seed: seed + 11);
+                fill, lobeCount: lobeCount, time: tWithPhase * 0.9f, wobbleAmp: 0.1f, seed: seed + 11);
             OrganicPrimitives.DrawBlob(sb, assets, pixelPos, baseR * 0.65f,
                 Color.Lerp(fill, CLGlow, 0.25f + pulse * 0.25f),
-                lobeCount: 4, time: t * 1.2f, wobbleAmp: 0.08f, seed: seed + 23);
+                lobeCount: Math.Max(3, lobeCount - 1), time: tWithPhase * 1.2f, wobbleAmp: 0.08f, seed: seed + 23);
 
             // 3. Gill ribs — small radial bezier ribs with tiny twitch
             int ribs = 8;
@@ -709,23 +824,29 @@ namespace Bloop.Rendering
             float t = AnimationClock.Time;
             int seed = (int)(pixelPos.X * 7 + pixelPos.Y * 11);
 
+            // Per-instance visual variety
+            var variant = VisualVariant.FromSeed(seed);
+            float tWithPhase = t + variant.PhaseOffset * 0.12f;
+
             float pulse = AnimationClock.Pulse(rarity == ItemRarity.Rare ? 3.5f : 2f);
 
-            float bobAmp = rarity == ItemRarity.Rare ? 3f : 2f;
-            float bobY   = AnimationClock.Sway(bobAmp, 1.5f);
-            float driftX = AnimationClock.Sway(1f, 0.8f, 0.5f);
+            float bobAmp = (rarity == ItemRarity.Rare ? 3f : 2f) * variant.Scale;
+            float bobY   = AnimationClock.Sway(bobAmp, 1.5f, variant.PhaseOffset);
+            float driftX = AnimationClock.Sway(1f * variant.Scale, 0.8f, 0.5f + variant.PhaseOffset * 0.3f);
             float tailFreq  = 2.5f + proximity01 * 5f;
             float tailAmp   = 0.25f + proximity01 * 0.45f;
-            float tailAngle = AnimationClock.Sway(tailAmp, tailFreq);
+            float tailAngle = AnimationClock.Sway(tailAmp, tailFreq, variant.PhaseOffset);
 
             int cx = (int)(pixelPos.X + driftX);
             int cy = (int)(pixelPos.Y + bobY);
             Vector2 ctr = new Vector2(cx, cy);
 
-            const int W = 20;
-            const int H = 10;
+            // Body size scaled by variant
+            int W = (int)(20 * variant.Scale);
+            int H = (int)(10 * variant.Scale);
 
-            Color body = isPoisonous ? BFPoison : BFBody;
+            // Hue-shifted body color
+            Color body = ShiftHue(isPoisonous ? BFPoison : BFBody, variant.HueShift);
             if (rarity == ItemRarity.Rare)
                 body = Color.Lerp(body, new Color(185, 220, 255), 0.35f);
             else if (rarity == ItemRarity.Uncommon)

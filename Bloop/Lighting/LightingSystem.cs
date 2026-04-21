@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -27,7 +27,7 @@ namespace Bloop.Lighting
     {
         // ── Constants ──────────────────────────────────────────────────────────
         /// <summary>Maximum number of active light sources (performance cap).</summary>
-        private const int MaxLights = 64;
+        private const int MaxLights = 256;
 
         // ── Blend states ───────────────────────────────────────────────────────
         /// <summary>

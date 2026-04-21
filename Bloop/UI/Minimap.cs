@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Bloop.Core;
+using Bloop.Entities;
 using Bloop.Generators;
 using Bloop.Objects;
 using Bloop.Rendering;
@@ -34,6 +35,9 @@ namespace Bloop.UI
         private static readonly Color ShardColor    = new Color(180, 140, 255);
         private static readonly Color ShardGlow     = new Color(220, 190, 255);
         private static readonly Color BorderColor   = new Color(50,  60,  80);
+        // Entity dot colors (Task 13.2)
+        private static readonly Color EntityHostile = new Color(220,  60,  60);
+        private static readonly Color EntityFriendly= new Color( 60, 200, 120);
 
         // ── Draw ───────────────────────────────────────────────────────────────
 
@@ -134,6 +138,28 @@ namespace Bloop.UI
                             Color.Lerp(ShardColor, ShardGlow, pulse));
                     }
                     // Collected shards are removed from level.Objects, so no else needed
+                }
+            }
+
+            // ── Draw entity dots (Task 13.2) ───────────────────────────────────
+            // Show discovered entities as colored dots: red=hostile, green=friendly
+            foreach (var obj in level.Objects)
+            {
+                if (obj is ControllableEntity entity && !entity.IsDestroyed)
+                {
+                    int etx = (int)(entity.PixelPosition.X / TileMap.TileSize);
+                    int ety = (int)(entity.PixelPosition.Y / TileMap.TileSize);
+                    if (etx < 0 || etx >= mapW || ety < 0 || ety >= mapH) continue;
+                    // Only show if the tile is discovered
+                    if (!disc[etx, ety]) continue;
+
+                    int dotX = originX + etx * scale;
+                    int dotY = originY + ety * scale;
+                    Color dotColor = entity.DamagesPlayerOnContact ? EntityHostile : EntityFriendly;
+                    float dotPulse = AnimationClock.Pulse(2f, etx * 0.3f + ety * 0.2f);
+                    assets.DrawRect(spriteBatch,
+                        new Rectangle(dotX - 1, dotY - 1, scale + 2, scale + 2),
+                        dotColor * (0.6f + dotPulse * 0.4f));
                 }
             }
 

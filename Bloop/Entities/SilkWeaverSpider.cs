@@ -28,6 +28,11 @@ namespace Bloop.Entities
         public override float  MovementSpeed   => 120f;
         public override bool   CanWallClimb    => true;
 
+        // ── Contact damage ─────────────────────────────────────────────────────
+        public override bool  DamagesPlayerOnContact => true;
+        public override float ContactDamage          => 8f;
+        public override float ContactStunDuration    => 0.5f;
+
         // ── Web trail ──────────────────────────────────────────────────────────
         public List<Vector2> WebTrailPoints { get; } = new List<Vector2>();
         private float _trailRecordTimer;
@@ -41,6 +46,18 @@ namespace Bloop.Entities
         private float   _wanderTimer;
         private const float WanderInterval = 4f;
         private const float WanderRadius   = 60f;
+
+        // ── Wall patrol + lunge ────────────────────────────────────────────────
+        private float _patrolDirection = 1f;   // +1 right, -1 left
+        private float _patrolPauseTimer;        // pause between patrol legs
+        private bool  _isLunging;
+        private float _lungeTimer;
+        private Vector2 _lungeTarget;
+        private const float LungeRange    = 60f;   // px — player detection for lunge
+        private const float LungeSpeed    = 200f;  // px/s during lunge
+        private const float LungeDuration = 0.3f;  // seconds
+        private const float PatrolSpeed   = 50f;   // px/s during wall patrol
+        private const float PatrolPauseMax = 2f;   // max pause seconds
 
         public SilkWeaverSpider(Vector2 pixelPosition, AetherWorld world,
             InputManager input, Camera camera)
@@ -56,6 +73,9 @@ namespace Bloop.Entities
 
             Skill = new PheromoneWebTrailSkill(this);
         }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Venomous wall-crawler. Spins sticky webs.", "[Q] Control — 8s wall climb");
 
         protected override void OnControlStart()
         {
@@ -117,22 +137,69 @@ namespace Bloop.Entities
             if (IsStuck) { SetVelocity(Vector2.Zero); return; }
             if (IsFleeing) { SetVelocity(FleeDirection * MovementSpeed * 0.5f); return; }
 
+            // ── Lunge at player when close ─────────────────────────────────────
+            if (_isLunging)
+            {
+                _lungeTimer -= dt;
+                Vector2 toLunge = _lungeTarget - PixelPosition;
+                if (toLunge.LengthSquared() > 4f)
+                    SetVelocity(Vector2.Normalize(toLunge) * LungeSpeed);
+                else
+                    SetVelocity(Vector2.Zero);
+
+                if (_lungeTimer <= 0f)
+                {
+                    _isLunging    = false;
+                    _wanderTarget = PixelPosition; // retreat to current spot
+                    _wanderTimer  = WanderInterval;
+                }
+                return;
+            }
+
+            // ── Detect player for lunge ────────────────────────────────────────
+            if (HasPlayerPosition)
+            {
+                float distToPlayer = Vector2.Distance(PixelPosition, PlayerPosition);
+                if (distToPlayer < LungeRange)
+                {
+                    _isLunging   = true;
+                    _lungeTimer  = LungeDuration;
+                    _lungeTarget = PlayerPosition;
+                    return;
+                }
+            }
+
+            // ── Wall patrol: move horizontally, pause occasionally ─────────────
+            if (_patrolPauseTimer > 0f)
+            {
+                _patrolPauseTimer -= dt;
+                SetVelocity(Vector2.Zero);
+                return;
+            }
+
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {
                 _wanderTimer = WanderInterval;
+                // Occasionally reverse patrol direction or pause
                 var rng = new Random();
-                float angle = (float)(rng.NextDouble() * Math.PI * 2.0);
-                float r     = (float)(rng.NextDouble() * WanderRadius);
-                _wanderTarget = PixelPosition + new Vector2(
-                    (float)Math.Cos(angle) * r, (float)Math.Sin(angle) * r);
+                if (rng.NextDouble() < 0.3)
+                    _patrolDirection = -_patrolDirection;
+                else if (rng.NextDouble() < 0.2)
+                    _patrolPauseTimer = (float)(rng.NextDouble() * PatrolPauseMax);
+                // Update wander target along patrol direction
+                _wanderTarget = PixelPosition + new Vector2(_patrolDirection * WanderRadius, 0f);
             }
 
             Vector2 toTarget = _wanderTarget - PixelPosition;
             if (toTarget.LengthSquared() > 4f)
-                SetVelocity(Vector2.Normalize(toTarget) * MovementSpeed * 0.4f);
+                SetVelocity(new Vector2(MathF.Sign(toTarget.X) * PatrolSpeed, GetVelocityPixels().Y));
             else
+            {
                 SetVelocity(Vector2.Zero);
+                _patrolDirection = -_patrolDirection; // reverse at end of patrol leg
+                _wanderTimer = 0f;
+            }
         }
 
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)

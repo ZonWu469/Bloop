@@ -43,6 +43,16 @@ namespace Bloop.Entities
         private float   _wanderTimer;
         private const float WanderInterval = 5f;
 
+        // ── Cluster drift + sync glow ──────────────────────────────────────────
+        /// <summary>Shared cluster center updated by the first glowworm each frame.</summary>
+        public static Vector2 ClusterCenter { get; set; } = Vector2.Zero;
+        public static int     ClusterCount  { get; set; } = 0;
+        /// <summary>Per-instance sync phase offset for staggered glow pulsing.</summary>
+        public float SyncPhase { get; private set; }
+        private static readonly Random _syncRng = new Random();
+        private const float ClusterDriftSpeed = 20f;  // px/s toward cluster center
+        private const float ClusterRadius     = 60f;  // px — cluster cohesion radius
+
         public LuminescentGlowworm(Vector2 pixelPosition, AetherWorld world, InputManager input)
             : base(ControllableEntityType.LuminescentGlowworm, pixelPosition, world)
         {
@@ -53,7 +63,13 @@ namespace Bloop.Entities
             Body.Tag = this;
 
             Skill = new BioluminescenceFlashSkill(this);
+
+            // Randomize sync phase so glowworms pulse at slightly different times
+            SyncPhase = (float)(_syncRng.NextDouble() * Math.PI * 2.0);
         }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Bioluminescent cave worm. Drifts in clusters.", "[Q] Control — 10s light carrier");
 
         public void SetLightSource(LightSource light)
         {
@@ -125,6 +141,23 @@ namespace Bloop.Entities
                 return;
             }
 
+            // ── Cluster drift: drift toward shared cluster center ──────────────
+            // ClusterCenter is updated externally by Level or GameplayScreen each frame
+            // by averaging all glowworm positions. Here we just drift toward it.
+            if (ClusterCount > 1)
+            {
+                float distToCluster = Vector2.Distance(PixelPosition, ClusterCenter);
+                if (distToCluster > ClusterRadius)
+                {
+                    Vector2 toCluster = Vector2.Normalize(ClusterCenter - PixelPosition);
+                    // Blend cluster drift with normal wander
+                    Vector2 driftVel = toCluster * ClusterDriftSpeed;
+                    SetVelocity(driftVel);
+                    return;
+                }
+            }
+
+            // ── Normal wander (slow, peaceful) ────────────────────────────────
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {

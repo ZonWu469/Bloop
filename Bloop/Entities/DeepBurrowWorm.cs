@@ -28,6 +28,11 @@ namespace Bloop.Entities
         public override float  MovementSpeed   => 50f;
         public override bool   CanBurrow       => true;
 
+        // ── Contact damage ─────────────────────────────────────────────────────
+        public override bool  DamagesPlayerOnContact => true;
+        public override float ContactDamage          => 10f;
+        public override float ContactStunDuration    => 0.5f;
+
         // ── Burrow state ───────────────────────────────────────────────────────
         public bool IsBurrowing { get; private set; }
         private float _burrowTimer;
@@ -42,6 +47,15 @@ namespace Bloop.Entities
         private float   _wanderTimer;
         private const float WanderInterval = 4f;
 
+        // ── Idle burrow + ambush ───────────────────────────────────────────────
+        private bool  _isBurrowed;           // hiding underground between ambushes
+        private float _idleBurrowTimer;      // time to stay burrowed
+        private float _ambushCooldown;       // cooldown after emerging
+        private const float IdleBurrowInterval = 6f;   // seconds between burrow cycles
+        private const float IdleBurrowDuration = 3f;   // seconds spent underground
+        private const float AmbushRange        = 40f;  // px — player above detection
+        private const float AmbushCooldownTime = 4f;   // seconds before next ambush
+
         public DeepBurrowWorm(Vector2 pixelPosition, AetherWorld world, InputManager input)
             : base(ControllableEntityType.DeepBurrowWorm, pixelPosition, world)
         {
@@ -55,6 +69,10 @@ namespace Bloop.Entities
         }
 
         protected override void OnControlStart() { IsBurrowing = false; }
+
+        public override (string description, string? actionHint) GetTooltipInfo()
+            => ("Subterranean ambush predator. Burrows to surprise prey.", "[Q] Control — 8s tunnel dig");
+
         protected override void OnControlEnd()
         {
             IsBurrowing   = false;
@@ -97,6 +115,10 @@ namespace Bloop.Entities
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+            // Tick ambush cooldown
+            if (_ambushCooldown > 0f) _ambushCooldown -= dt;
+
+            // ── Skill-triggered burrow (from TriggerBurrow) ───────────────────
             if (IsBurrowing)
             {
                 _burrowTimer -= dt;
@@ -106,11 +128,53 @@ namespace Bloop.Entities
 
             if (IsStuck) { SetVelocity(Vector2.Zero); return; }
 
+            // ── Idle burrow cycle: periodically hide underground ───────────────
+            if (_isBurrowed)
+            {
+                _idleBurrowTimer -= dt;
+                SetVelocity(Vector2.Zero);
+
+                // While burrowed, check if player is directly above within AmbushRange
+                if (HasPlayerPosition && _ambushCooldown <= 0f)
+                {
+                    float dx = MathF.Abs(PlayerPosition.X - PixelPosition.X);
+                    float dy = PixelPosition.Y - PlayerPosition.Y; // positive = player above
+                    if (dx < 20f && dy > 0f && dy < AmbushRange)
+                    {
+                        // Ambush: erupt upward
+                        _isBurrowed      = false;
+                        _ambushCooldown  = AmbushCooldownTime;
+                        if (Body != null) Body.IgnoreGravity = false;
+                        SetVelocity(new Vector2(0f, -120f)); // burst upward
+                        return;
+                    }
+                }
+
+                if (_idleBurrowTimer <= 0f)
+                {
+                    // Emerge from idle burrow
+                    _isBurrowed = false;
+                    if (Body != null) Body.IgnoreGravity = false;
+                    _wanderTimer = WanderInterval;
+                }
+                return;
+            }
+
+            // ── Periodically burrow to hide ────────────────────────────────────
             _wanderTimer -= dt;
             if (_wanderTimer <= 0f)
             {
                 _wanderTimer = WanderInterval;
                 var rng = new Random();
+                if (rng.NextDouble() < 0.35 && _ambushCooldown <= 0f)
+                {
+                    // Enter idle burrow
+                    _isBurrowed      = true;
+                    _idleBurrowTimer = IdleBurrowDuration;
+                    if (Body != null) Body.IgnoreGravity = true;
+                    SetVelocity(Vector2.Zero);
+                    return;
+                }
                 float dir = rng.NextDouble() > 0.5 ? 1f : -1f;
                 _wanderTarget = PixelPosition + new Vector2(dir * 60f, 0f);
             }

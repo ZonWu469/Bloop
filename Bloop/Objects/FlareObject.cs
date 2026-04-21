@@ -47,7 +47,15 @@ namespace Bloop.Objects
             Body.LinearVelocity = PhysicsManager.ToMeters(launchVelocityPixels);
 
             _light = new FlareLight(spawnPixelPos);
-            _lighting?.AddLight(_light);
+            if (_lighting != null)
+            {
+                _lighting.AddLight(_light);
+                System.Console.Error.WriteLine($"[FlareObject] Light added. Radius={FlareLight.FlareLightRadius}, Intensity={FlareLight.FlareLightIntensity}, Total lights={_lighting.Lights.Count}");
+            }
+            else
+            {
+                System.Console.Error.WriteLine("[FlareObject] WARNING: LightingSystem is null — flare light NOT added!");
+            }
         }
 
         public override Rectangle GetBounds()

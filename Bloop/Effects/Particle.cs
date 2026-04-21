@@ -53,5 +53,7 @@ namespace Bloop.Effects
         DripSplash,
         /// <summary>Floating cave spore rising from GlowVines / VentFlowers.</summary>
         CaveSpore,
+        /// <summary>Grey-white smoke puff emitted when the player slides down a wall.</summary>
+        WallFriction,
     }
 }

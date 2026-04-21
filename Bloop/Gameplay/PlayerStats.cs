@@ -34,6 +34,12 @@ namespace Bloop.Gameplay
         public bool HasLanternFuel => LanternFuel > 0f;
         public bool HasFlares      => FlareCount > 0;
 
+        /// <summary>
+        /// The source of the last damage taken. Used for death recap display.
+        /// Null until damage has been received.
+        /// </summary>
+        public string? LastDamageSource { get; private set; }
+
         // ── Drain / Refill ─────────────────────────────────────────────────────
 
         /// <summary>
@@ -65,10 +71,11 @@ namespace Bloop.Gameplay
             }
         }
 
-        /// <summary>Apply damage to health.</summary>
-        public void TakeDamage(float amount)
+        /// <summary>Apply damage to health. Optionally records the damage source for death recap.</summary>
+        public void TakeDamage(float amount, string? source = null)
         {
             Health = MathHelper.Clamp(Health - amount, 0f, MaxHealth);
+            if (source != null) LastDamageSource = source;
         }
 
         /// <summary>Restore health by amount.</summary>

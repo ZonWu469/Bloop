@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Bloop.Core;
 using Bloop.Effects;
 using Bloop.Entities;
@@ -54,6 +55,26 @@ namespace Bloop.Screens
 
         // ── Player trail effect (3.5) ──────────────────────────────────────────
         private readonly TrailEffect _trail = new TrailEffect();
+
+        // ── HUD smooth display fractions (Task 9) ─────────────────────────────
+        private float _displayLantern = 1f;
+        private float _displayBreath  = 1f;
+        private float _displayHealth  = 1f;
+        private float _displayKinetic = 0f;
+
+        // ── Shard counter pulse (Task 10) ──────────────────────────────────────
+        private int   _lastShardCount  = 0;
+        private float _shardPulseTimer = 0f;
+        private const float ShardPulseDuration = 0.6f;
+
+        // ── Damage flash (Task 13.1) ───────────────────────────────────────────
+        private float _damageFlashTimer = 0f;
+        private const float DamageFlashDuration = 0.15f;
+
+        // ── Contextual prompt (Task 12) ────────────────────────────────────────
+        private float  _promptFadeTimer = 0f;
+        private string _promptText      = "";
+        private const float PromptFadeSpeed = 4f;
 
         // ── Lighting ───────────────────────────────────────────────────────────
         /// <summary>The player's lantern — a permanent light that tracks player position.</summary>
@@ -171,6 +192,10 @@ namespace Bloop.Screens
             _momentum.OnShakeRequested = (amplitude, duration) =>
                 _camera?.Shake(amplitude, duration);
 
+            // ── Wire damage flash (Task 13.1) ──────────────────────────────────
+            _player.OnDamageReceived = (_) =>
+                _damageFlashTimer = DamageFlashDuration;
+
             // Earthquake system shakes the screen during warning/active/aftershock
             if (_level.Earthquake != null)
             {
@@ -230,6 +255,22 @@ namespace Bloop.Screens
             // ── Update controller (input → forces) ─────────────────────────────
             _controller.Update(gameTime);
 
+            // ── Wall friction particles (wall slide) ───────────────────────────
+            if (_particles != null &&
+                (_player.State == PlayerState.Falling || _player.State == PlayerState.WallClinging) &&
+                _player.IsTouchingWall)
+            {
+                float fallSpeed = MathF.Abs(_player.PixelVelocity.Y);
+                if (fallSpeed > 20f)
+                {
+                    float contactX = _player.IsTouchingWallLeft
+                        ? _player.PixelPosition.X - Player.WidthPx / 2f
+                        : _player.PixelPosition.X + Player.WidthPx / 2f;
+                    _particles.EmitWallFriction(
+                        new Vector2(contactX, _player.PixelPosition.Y), fallSpeed);
+                }
+            }
+
             // ── Update grapple hook aim target (for aim line rendering) ────────
             if (_grapple != null && _camera != null)
             {
@@ -278,10 +319,48 @@ namespace Bloop.Screens
                 : _player.PixelPosition;
             _camera.Follow(cameraTarget, gameTime);
 
+            // ── Smooth HUD display fractions (Task 9) ─────────────────────────
+            float actualLantern = _player.Stats.LanternFuel / PlayerStats.MaxLanternFuel;
+            float actualBreath  = _player.Stats.Breath      / PlayerStats.MaxBreath;
+            float actualHealth  = _player.Stats.Health      / PlayerStats.MaxHealth;
+            float actualKinetic = _player.Stats.KineticCharge / PlayerStats.MaxKineticCharge;
+            _displayLantern = MathHelper.Lerp(_displayLantern, actualLantern, dt * 8f);
+            _displayBreath  = MathHelper.Lerp(_displayBreath,  actualBreath,  dt * 8f);
+            _displayHealth  = MathHelper.Lerp(_displayHealth,  actualHealth,  dt * 8f);
+            _displayKinetic = MathHelper.Lerp(_displayKinetic, actualKinetic, dt * 8f);
+
+            // ── Shard pulse timer (Task 10) ────────────────────────────────────
+            if (_level != null)
+            {
+                int currentShards = _level.ShardsCollected;
+                if (currentShards != _lastShardCount)
+                {
+                    _shardPulseTimer = ShardPulseDuration;
+                    _lastShardCount  = currentShards;
+                }
+                if (_shardPulseTimer > 0f) _shardPulseTimer -= dt;
+            }
+
+            // ── Damage flash timer (Task 13.1) ─────────────────────────────────
+            if (_damageFlashTimer > 0f) _damageFlashTimer -= dt;
+
+            // ── Contextual prompt fade (Task 12) ───────────────────────────────
+            string newPrompt = GetContextualPrompt();
+            if (newPrompt != _promptText)
+            {
+                _promptText      = newPrompt;
+                _promptFadeTimer = 0f;
+            }
+            if (_promptText.Length > 0)
+                _promptFadeTimer = Math.Min(_promptFadeTimer + dt * PromptFadeSpeed, 1f);
+            else
+                _promptFadeTimer = Math.Max(_promptFadeTimer - dt * PromptFadeSpeed, 0f);
+
             // ── Death check ────────────────────────────────────────────────────
             if (_player.State == PlayerState.Dead)
             {
-                ScreenManager.Replace(new GameOverScreen(Seed, Depth, "Ran out of health"));
+                string cause = _player.Stats.LastDamageSource ?? "Ran out of health";
+                ScreenManager.Replace(new GameOverScreen(Seed, Depth, cause));
                 return;
             }
 
@@ -358,8 +437,11 @@ namespace Bloop.Screens
             // ── Screen-space HUD + Inventory UI (no camera transform, no lighting) ──
             spriteBatch.Begin();
             DrawHUD(spriteBatch, assets, vw, vh);
-            // Entity control HUD (Q button, cooldown ring, control bar, skill pips)
-            _entityControlHUD?.Draw(spriteBatch, assets, vw, vh);
+            // Contextual prompts (world-space text drawn in screen pass, near player)
+            if (_player != null && _camera != null && _promptFadeTimer > 0.02f)
+                DrawContextualPrompt(spriteBatch, assets, vw, vh);
+            // Entity control HUD (Q button, cooldown ring, control bar, skill pips, edge arrows)
+            _entityControlHUD?.Draw(spriteBatch, assets, vw, vh, _camera, _level);
             // Minimap (bottom-right corner)
             if (_level != null && _player != null)
                 _minimap.Draw(spriteBatch, assets, _level, _player.PixelPosition, vw, vh);
@@ -406,9 +488,83 @@ namespace Bloop.Screens
 
         // ── Private helpers ────────────────────────────────────────────────────
 
+        // ── Contextual prompt helper (Task 12) ────────────────────────────────
+        private string GetContextualPrompt()
+        {
+            if (_player == null || _level == null) return "";
+
+            // Priority 1: entity control ready and entity nearby
+            if (_entityControl != null && _entityControl.IsReady && !_entityControl.IsControlling)
+            {
+                foreach (var obj in _level.Objects)
+                {
+                    if (obj is Entities.ControllableEntity ent && !ent.IsDestroyed && !ent.IsControlled)
+                    {
+                        float dist = Vector2.Distance(_player.PixelPosition, ent.PixelPosition);
+                        if (dist < Entities.EntityControlSystem.SelectionRange)
+                            return "[Q] Control Entity";
+                    }
+                }
+            }
+
+            // Priority 2: near climbable surface
+            foreach (var obj in _level.Objects)
+            {
+                if (obj is Objects.ClimbableSurface cs && !cs.IsDestroyed)
+                {
+                    float dist = Vector2.Distance(_player.PixelPosition, cs.PixelPosition);
+                    if (dist < 40f) return "[C] Climb";
+                }
+            }
+
+            // Priority 3: near vent flower
+            foreach (var obj in _level.Objects)
+            {
+                if (obj is Objects.VentFlower vf && !vf.IsDestroyed)
+                {
+                    float dist = Vector2.Distance(_player.PixelPosition, vf.PixelPosition);
+                    if (dist < 48f) return "Stand to Recharge";
+                }
+            }
+
+            return "";
+        }
+
+        private void DrawContextualPrompt(SpriteBatch sb, AssetManager assets, int vw, int vh)
+        {
+            if (_player == null || _camera == null || _promptText.Length == 0) return;
+
+            // Convert player head position to screen space
+            Vector2 worldHead = _player.PixelPosition - new Vector2(0, 28f);
+            Vector2 screenPos = _camera.WorldToScreen(worldHead);
+
+            float alpha = _promptFadeTimer;
+            if (assets.GameFont == null) return;
+
+            Vector2 textSize = assets.GameFont.MeasureString(_promptText) * 0.75f;
+            float tx = screenPos.X - textSize.X / 2f;
+            float ty = screenPos.Y - textSize.Y - 4f;
+
+            // Clamp to screen
+            tx = Math.Clamp(tx, 4f, vw - textSize.X - 4f);
+            ty = Math.Clamp(ty, 4f, vh - textSize.Y - 4f);
+
+            // Background pill
+            var bgRect = new Rectangle((int)tx - 6, (int)ty - 3, (int)textSize.X + 12, (int)textSize.Y + 6);
+            assets.DrawRect(sb, bgRect, new Color(8, 12, 18, (int)(180 * alpha)));
+            assets.DrawRectOutline(sb, bgRect, new Color(60, 90, 110, (int)(160 * alpha)), 1);
+
+            assets.DrawString(sb, _promptText, new Vector2(tx, ty),
+                new Color(180, 220, 240, (int)(220 * alpha)), 0.75f);
+        }
+
         /// <summary>Draw all world-space content (level, rope, grapple, player, debug).</summary>
         private void DrawWorld(SpriteBatch spriteBatch, AssetManager assets)
         {
+            // Update danger indicator proximity reference for EntityRenderer
+            if (_player != null)
+                Rendering.EntityRenderer.PlayerPositionForDanger = _player.PixelPosition;
+
             // Level (background + tiles + objects)
             _level!.Draw(spriteBatch, assets, _camera!.GetVisibleBounds());
 
@@ -647,39 +803,92 @@ namespace Bloop.Screens
         {
             if (_player == null) return;
 
-            const int barW = 160;
-            const int barH = 14;
-            const int barX = 16;
+            const int barW  = 160;
+            const int barH  = 14;
+            const int barX  = 16;
+            const int iconW = 14;
             int y = 16;
 
-            // ── Lantern fuel bar ───────────────────────────────────────────────
-            DrawBar(spriteBatch, assets, barX, y, barW, barH,
-                _player.Stats.LanternFuel / PlayerStats.MaxLanternFuel,
-                new Color(220, 180, 60), new Color(40, 30, 10), "Lantern");
+            // ── Damage flash vignette (Task 13.1) ─────────────────────────────
+            if (_damageFlashTimer > 0f)
+            {
+                float flashAlpha = (_damageFlashTimer / DamageFlashDuration) * 0.55f;
+                for (int ring = 0; ring < 6; ring++)
+                {
+                    int margin = ring * 14;
+                    byte a = (byte)(flashAlpha * (80 - ring * 12));
+                    if (a > 0)
+                        assets.DrawRectOutline(spriteBatch,
+                            new Rectangle(margin, margin, vw - margin * 2, vh - margin * 2),
+                            new Color((byte)220, (byte)30, (byte)30, a), 14);
+                }
+            }
+
+            // ── Lantern fuel bar (Task 9: icon + numeric + smooth + low warning) ─
+            bool lanternLow = _displayLantern < 0.2f;
+            Color lanternFill = lanternLow
+                ? Color.Lerp(new Color(220, 180, 60), new Color(255, 80, 40),
+                    AnimationClock.Pulse(4f) * 0.6f)
+                : new Color(220, 180, 60);
+            DrawBar(spriteBatch, assets, barX + iconW + 2, y, barW, barH,
+                _displayLantern, lanternFill, new Color(40, 30, 10),
+                $"Fuel {(int)(_player.Stats.LanternFuel):0}/{(int)PlayerStats.MaxLanternFuel:0}",
+                lowWarning: lanternLow);
+            // Icon: small flame symbol (diamond)
+            GeometryBatch.DrawDiamond(spriteBatch, assets,
+                new Vector2(barX + iconW / 2f, y + barH / 2f), 5f,
+                lanternFill * (lanternLow ? 0.6f + AnimationClock.Pulse(4f) * 0.4f : 0.9f));
             y += barH + 6;
 
-            // ── Breath meter ───────────────────────────────────────────────────
-            float breathFrac = _player.Stats.Breath / PlayerStats.MaxBreath;
-            Color breathColor = breathFrac < 0.25f
-                ? new Color(220, 60, 60)   // warning red
-                : new Color(60, 160, 220); // normal blue
-            DrawBar(spriteBatch, assets, barX, y, barW, barH,
-                breathFrac, breathColor, new Color(10, 20, 40), "Breath");
+            // ── Breath meter (Task 9) ──────────────────────────────────────────
+            bool breathLow = _displayBreath < 0.25f;
+            Color breathFill = breathLow
+                ? Color.Lerp(new Color(60, 160, 220), new Color(220, 60, 60),
+                    AnimationClock.Pulse(5f) * 0.7f)
+                : new Color(60, 160, 220);
+            DrawBar(spriteBatch, assets, barX + iconW + 2, y, barW, barH,
+                _displayBreath, breathFill, new Color(10, 20, 40),
+                $"Air {(int)(_player.Stats.Breath):0}/{(int)PlayerStats.MaxBreath:0}",
+                lowWarning: breathLow);
+            // Icon: small circle (lungs approximation)
+            GeometryBatch.DrawCircleApprox(spriteBatch, assets,
+                new Vector2(barX + iconW / 2f, y + barH / 2f), 4f,
+                breathFill * 0.9f, 6);
             y += barH + 6;
 
-            // ── Health bar ─────────────────────────────────────────────────────
-            DrawBar(spriteBatch, assets, barX, y, barW, barH,
-                _player.Stats.Health / PlayerStats.MaxHealth,
-                new Color(200, 60, 60), new Color(40, 10, 10), "Health");
+            // ── Health bar (Task 9) ────────────────────────────────────────────
+            bool healthLow = _displayHealth < 0.2f;
+            Color healthFill = healthLow
+                ? Color.Lerp(new Color(200, 60, 60), new Color(255, 120, 40),
+                    AnimationClock.Pulse(3f) * 0.5f)
+                : new Color(200, 60, 60);
+            DrawBar(spriteBatch, assets, barX + iconW + 2, y, barW, barH,
+                _displayHealth, healthFill, new Color(40, 10, 10),
+                $"HP {(int)_player.Stats.Health:0}/{(int)PlayerStats.MaxHealth:0}",
+                lowWarning: healthLow);
+            // Icon: small heart (two diamonds)
+            GeometryBatch.DrawDiamond(spriteBatch, assets,
+                new Vector2(barX + iconW / 2f - 2, y + barH / 2f), 3f,
+                healthFill * 0.9f);
+            GeometryBatch.DrawDiamond(spriteBatch, assets,
+                new Vector2(barX + iconW / 2f + 2, y + barH / 2f), 3f,
+                healthFill * 0.9f);
             y += barH + 6;
 
-            // ── Kinetic charge bar ─────────────────────────────────────────────
-            float kineticFrac = _player.Stats.KineticCharge / PlayerStats.MaxKineticCharge;
-            Color kineticColor = kineticFrac >= 1f
-                ? new Color(255, 220, 40)  // max charge glow
+            // ── Kinetic charge bar (Task 9) ────────────────────────────────────
+            bool kineticFull = _displayKinetic >= 0.99f;
+            Color kineticFill = kineticFull
+                ? Color.Lerp(new Color(180, 120, 220), new Color(255, 220, 40),
+                    AnimationClock.Pulse(2f) * 0.6f)
                 : new Color(180, 120, 220);
-            DrawBar(spriteBatch, assets, barX, y, barW, barH,
-                kineticFrac, kineticColor, new Color(20, 10, 40), "Kinetic");
+            DrawBar(spriteBatch, assets, barX + iconW + 2, y, barW, barH,
+                _displayKinetic, kineticFill, new Color(20, 10, 40),
+                $"KE {(int)(_player.Stats.KineticCharge * 100f):0}%",
+                lowWarning: false);
+            // Icon: lightning bolt (line)
+            assets.DrawRect(spriteBatch,
+                new Rectangle(barX + iconW / 2 - 1, y + 2, 2, barH - 4),
+                kineticFill * 0.9f);
             y += barH + 6;
 
             // ── Flare count ────────────────────────────────────────────────────
@@ -721,23 +930,52 @@ namespace Bloop.Screens
                 }
             }
 
-            // ── Shard counter ──────────────────────────────────────────────────
+            // ── Shard counter (Task 10: diamond icon + pulse + EXIT OPEN glow) ─
             if (_level != null)
             {
-                int collected = _level.ShardsCollected;
-                int required  = _level.ShardsRequired;
-                bool allFound = _level.IsExitUnlocked;
+                int   collected = _level.ShardsCollected;
+                int   required  = _level.ShardsRequired;
+                bool  allFound  = _level.IsExitUnlocked;
+
+                float pulseFrac = _shardPulseTimer > 0f
+                    ? (_shardPulseTimer / ShardPulseDuration)
+                    : 0f;
+                float exitPulse = allFound ? AnimationClock.Pulse(2.5f) : 0f;
+
                 Color shardColor = allFound
-                    ? new Color(180, 140, 255)  // purple when complete
-                    : new Color(100, 80, 160);  // dim when incomplete
+                    ? Color.Lerp(new Color(180, 140, 255), new Color(240, 210, 255), exitPulse * 0.4f)
+                    : Color.Lerp(new Color(100, 80, 160), new Color(200, 170, 255), pulseFrac);
 
-                string shardText = allFound
-                    ? $"Shards: {collected}/{required}  [EXIT OPEN]"
-                    : $"Shards: {collected}/{required}";
+                float shardCx = vw / 2f;
+                float shardY  = 14f;
 
-                assets.DrawString(spriteBatch,
-                    shardText,
-                    new Vector2(vw / 2f - 60f, 16f), shardColor, 0.8f);
+                // Diamond icon
+                float iconScale = 1f + pulseFrac * 0.4f + exitPulse * 0.2f;
+                GeometryBatch.DrawDiamond(spriteBatch, assets,
+                    new Vector2(shardCx - 52f, shardY + 6f), 5f * iconScale, shardColor);
+
+                // Shard text
+                string shardText = $"Shards: {collected}/{required}";
+                assets.DrawString(spriteBatch, shardText,
+                    new Vector2(shardCx - 38f, shardY), shardColor, 0.8f);
+
+                // EXIT OPEN glowing badge
+                if (allFound)
+                {
+                    float badgePulse = AnimationClock.Pulse(2f);
+                    Color badgeColor = Color.Lerp(new Color(140, 100, 220), new Color(220, 180, 255), badgePulse * 0.5f);
+                    string exitText  = "EXIT OPEN";
+                    if (assets.GameFont != null)
+                    {
+                        Vector2 exitSize = assets.GameFont.MeasureString(exitText) * 0.75f;
+                        float ex = shardCx - exitSize.X / 2f;
+                        float ey = shardY + 18f;
+                        var exitRect = new Rectangle((int)ex - 6, (int)ey - 2, (int)exitSize.X + 12, (int)exitSize.Y + 4);
+                        assets.DrawRect(spriteBatch, exitRect, new Color(30, 15, 50, 200));
+                        assets.DrawRectOutline(spriteBatch, exitRect, badgeColor * (0.6f + badgePulse * 0.4f), 1);
+                        assets.DrawString(spriteBatch, exitText, new Vector2(ex, ey), badgeColor, 0.75f);
+                    }
+                }
             }
 
             // ── Depth + seed info ──────────────────────────────────────────────
@@ -760,15 +998,15 @@ namespace Bloop.Screens
                     new Vector2(vw - 200f, 56f), new Color(100, 120, 100), 0.7f);
             }
 
-            // ── Controls strip (top center) ────────────────────────────────────
-            assets.DrawStringCentered(spriteBatch,
-                "WASD · Move    Space · Jump    Down+Space · Rappel    LMB · Grapple    F · Flare    F1 · Physics    F2 · Lighting    Tab · Inventory    Esc · Pause",
-                8f, new Color(70, 90, 110), 0.75f);
+            // ── Action button bar (Task 8) — replaces text controls strip ──────
+            ActionButtonBar.Draw(spriteBatch, assets,
+                _player.State, _player.Stats, _entityControl, vw, vh);
         }
 
         private void DrawBar(SpriteBatch spriteBatch, AssetManager assets,
             int x, int y, int w, int h,
-            float fraction, Color fillColor, Color bgColor, string label)
+            float fraction, Color fillColor, Color bgColor, string label,
+            bool lowWarning = false)
         {
             // Background
             assets.DrawRect(spriteBatch, new Rectangle(x, y, w, h), bgColor);
