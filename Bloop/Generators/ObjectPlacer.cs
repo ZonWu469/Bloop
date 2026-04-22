@@ -24,6 +24,7 @@ namespace Bloop.Generators
         IonStone,
         PhosphorMoss,
         CrystalCluster,
+        CrystalBridge,
         // ── Controllable entities ──────────────────────────────────────────────
         EchoBat,
         SilkWeaverSpider,
@@ -92,6 +93,81 @@ namespace Bloop.Generators
         /// (0=Cyan, 1=Violet, 2=Red). Default 0.
         /// </summary>
         public int Variant { get; set; } = 0;
+
+        /// <summary>
+        /// Normalized growth direction for CrystalBridge objects.
+        /// Ignored for all other types.
+        /// </summary>
+        public Vector2 GrowDirection { get; set; } = Vector2.UnitX;
+
+        /// <summary>
+        /// Number of crystal bridge segments (3–6).
+        /// Ignored for all other types.
+        /// </summary>
+        public int SegmentCount { get; set; } = 4;
+    }
+
+    /// <summary>
+    /// Controls which object types and entities are available at a given level (1–30).
+    /// Early levels have low variety; later levels unlock more hazardous and exotic content.
+    /// </summary>
+    public readonly struct DifficultyProfile
+    {
+        public int Level { get; init; }
+
+        // ── Object unlock flags ────────────────────────────────────────────────
+        public bool HasRootClump        { get; init; }
+        public bool HasStunDamage       { get; init; }
+        public bool HasCaveLichen       { get; init; }
+        public bool HasBlindFish        { get; init; }
+        public bool HasFallingStalactite{ get; init; }
+        public bool HasCrystalCluster   { get; init; }
+        public bool HasIonStone         { get; init; }
+        public bool HasCrystalBridge    { get; init; }
+
+        // ── Entity unlock flags ────────────────────────────────────────────────
+        public bool HasEchoBat              { get; init; }
+        public bool HasSilkWeaverSpider     { get; init; }
+        public bool HasChainCentipede       { get; init; }
+        public bool HasDeepBurrowWorm       { get; init; }
+        public bool HasBlindCaveSalamander  { get; init; }
+
+        /// <summary>
+        /// Overall density multiplier: 0.5 at level 1, 1.0 at level 15, 1.5 at level 30.
+        /// Applied to all placement chances.
+        /// </summary>
+        public float DensityScale { get; init; }
+
+        /// <summary>Build a DifficultyProfile for the given level (1–30).</summary>
+        public static DifficultyProfile ForLevel(int level)
+        {
+            level = Math.Clamp(level, 1, 30);
+            // Linear density ramp: 0.5 → 1.5 over levels 1–30
+            float density = 0.5f + (level - 1) / 29f;
+
+            return new DifficultyProfile
+            {
+                Level = level,
+                DensityScale = density,
+
+                // Objects unlocked progressively
+                HasRootClump         = level >= 4,
+                HasStunDamage        = level >= 7,
+                HasCaveLichen        = level >= 4,
+                HasBlindFish         = level >= 4,
+                HasFallingStalactite = level >= 7,
+                HasCrystalCluster    = level >= 7,
+                HasIonStone          = level >= 11,
+                HasCrystalBridge     = level >= 11,
+
+                // Entities unlocked progressively
+                HasEchoBat             = level >= 4,
+                HasSilkWeaverSpider    = level >= 7,
+                HasChainCentipede      = level >= 11,
+                HasDeepBurrowWorm      = level >= 16,
+                HasBlindCaveSalamander = level >= 4,
+            };
+        }
     }
 
     /// <summary>
@@ -141,10 +217,15 @@ namespace Bloop.Generators
         /// Uses CavityAnalyzer for topology-aware placement decisions.
         /// seed and depth are used to derive the placement RNG.
         /// biome provides per-biome density multipliers.
+        /// difficulty gates which object/entity types are available at this level.
         /// </summary>
         public static List<ObjectPlacement> PlaceObjects(TileMap map, int seed, int depth,
-            BiomeProfile biome = default)
+            BiomeProfile biome = default, DifficultyProfile difficulty = default)
         {
+            // Build difficulty profile from depth if caller didn't supply one
+            if (difficulty.Level == 0)
+                difficulty = DifficultyProfile.ForLevel(depth);
+
             // Use a different prime multiplier than LevelGenerator to avoid correlation
             var rng        = new Random(seed + depth * 3571);
             var placements = new List<ObjectPlacement>();
@@ -154,7 +235,8 @@ namespace Bloop.Generators
             int h = map.Height;
 
             // Depth multiplier for density scaling (clamped to reasonable range)
-            float depthMult = Math.Min(depth - 1, 20);
+            // Combined with difficulty density scale for progressive variety
+            float depthMult = Math.Min(depth - 1, 20) * difficulty.DensityScale;
 
             // Biome density multipliers (default 1.0 if no biome provided)
             float biomePlatform   = biome.DensityPlatform   > 0f ? biome.DensityPlatform   : 1f;
@@ -164,38 +246,49 @@ namespace Bloop.Generators
             float biomeVentFlower = biome.DensityVentFlower > 0f ? biome.DensityVentFlower : 1f;
             float biomeLichen     = biome.DensityLichen     > 0f ? biome.DensityLichen     : 1f;
 
-            // ── Disappearing platforms (gaps + shaft staircases) ──────────────
-            PlaceDisappearingPlatforms(map, analyzer, rng, placements, w, h, depthMult, biomePlatform);
+            // ── Disappearing platforms (always available — core traversal mechanic) ──
+            PlaceDisappearingPlatforms(map, analyzer, rng, placements, w, h, depthMult,
+                biomePlatform * difficulty.DensityScale);
 
-            // ── Stun/damage objects (floor, ceiling, walls) ───────────────────
-            PlaceStunObjects(map, analyzer, rng, placements, w, h, depthMult, biomeStun);
+            // ── Stun/damage objects (unlocked at level 7) ─────────────────────
+            if (difficulty.HasStunDamage)
+                PlaceStunObjects(map, analyzer, rng, placements, w, h, depthMult, biomeStun);
 
-            // ── Glow vines (wall faces + ceiling hanging) ─────────────────────
+            // ── Glow vines (always available — ambient decoration) ────────────
             PlaceGlowVines(map, analyzer, rng, placements, w, h, depthMult, biomeGlowVine);
 
-            // ── Root clumps (wall faces + ceiling hanging) ────────────────────
-            PlaceRootClumps(map, analyzer, rng, placements, w, h, depthMult, biomeRootClump);
+            // ── Root clumps (unlocked at level 4) ────────────────────────────
+            if (difficulty.HasRootClump)
+                PlaceRootClumps(map, analyzer, rng, placements, w, h, depthMult, biomeRootClump);
 
-            // ── Vent flowers (alcoves, shaft bottoms, floor) ──────────────────
-            PlaceVentFlowers(map, analyzer, rng, placements, w, h, biomeVentFlower);
+            // ── Vent flowers (always available — ambient decoration) ──────────
+            PlaceVentFlowers(map, analyzer, rng, placements, w, h,
+                biomeVentFlower * difficulty.DensityScale);
 
-            // ── Cave lichen (cavern clusters) ─────────────────────────────────
-            PlaceCaveLichen(map, analyzer, rng, placements, w, h, depthMult, seed, biomeLichen);
+            // ── Cave lichen (unlocked at level 4) ─────────────────────────────
+            if (difficulty.HasCaveLichen)
+                PlaceCaveLichen(map, analyzer, rng, placements, w, h, depthMult, seed, biomeLichen);
 
-            // ── Blind fish (wide floors, shaft bottoms) ───────────────────────
-            PlaceBlindFish(map, analyzer, rng, placements, w, h, depthMult, seed);
+            // ── Blind fish (unlocked at level 4) ──────────────────────────────
+            if (difficulty.HasBlindFish)
+                PlaceBlindFish(map, analyzer, rng, placements, w, h, depthMult, seed);
 
-            // ── Falling stalactites (ceiling surfaces in open areas) ──────────
-            PlaceFallingStalactites(map, analyzer, rng, placements, w, h, biomeStun);
+            // ── Falling stalactites (unlocked at level 7) ─────────────────────
+            if (difficulty.HasFallingStalactite)
+                PlaceFallingStalactites(map, analyzer, rng, placements, w, h, biomeStun);
 
-            // ── Resonance shards (dead-end alcoves, required for exit) ─────────
+            // ── Resonance shards (always available — required for exit) ────────
             PlaceResonanceShards(map, analyzer, rng, placements, w, h, seed);
 
-            // ── Glowing atmosphere objects (biome-specific) ────────────────────
+            // ── Crystal bridges (unlocked at level 11) ────────────────────────
+            if (difficulty.HasCrystalBridge)
+                PlaceCrystalBridges(map, analyzer, rng, placements, w, h, seed, difficulty);
+
+            // ── Glowing atmosphere objects (biome-specific, always available) ──
             PlaceGlowObjects(map, analyzer, rng, placements, w, h, biome.Tier);
 
-            // ── Controllable entities ──────────────────────────────────────────
-            PlaceControllableEntities(map, analyzer, rng, placements, w, h, depth);
+            // ── Controllable entities (gated by difficulty flags) ──────────────
+            PlaceControllableEntities(map, analyzer, rng, placements, w, h, depth, difficulty);
 
             return placements;
         }
@@ -1213,6 +1306,100 @@ namespace Bloop.Generators
             return TileMap.TileCenter(tx + 1, ty);
         }
 
+        // ── Crystal bridge placement ───────────────────────────────────────────
+
+        /// <summary>
+        /// Place 1–4 CrystalBridge anchors on wall surfaces adjacent to open space.
+        /// Growth direction points away from the wall into the open area.
+        /// Minimum 8-tile spacing between bridges.
+        /// Unlocked at level 11 via DifficultyProfile.
+        /// </summary>
+        private static void PlaceCrystalBridges(
+            TileMap map, CavityAnalyzer analyzer, Random rng,
+            List<ObjectPlacement> placements, int w, int h,
+            int seed, DifficultyProfile difficulty)
+        {
+            const int MinSpacingBridge = 8;
+            const int MaxBridges       = 4;
+
+            int count = 0;
+            int maxCount = 1 + (int)((difficulty.Level - 11) / 5f); // 1 at L11, 2 at L16, 3 at L21, 4 at L26
+            maxCount = Math.Clamp(maxCount, 1, MaxBridges);
+
+            var placed = new List<(int tx, int ty)>();
+
+            // Candidate growth directions: horizontal and diagonal-up
+            var directions = new[]
+            {
+                new Vector2( 1f,  0f),  // right
+                new Vector2(-1f,  0f),  // left
+                new Vector2( 1f, -0.5f), // right-up diagonal
+                new Vector2(-1f, -0.5f), // left-up diagonal
+            };
+
+            for (int tx = 3; tx < w - 3 && count < maxCount; tx++)
+            {
+                for (int ty = 4; ty < h - 4 && count < maxCount; ty++)
+                {
+                    // Must be a solid tile
+                    if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
+
+                    // Check for open space to the right or left (wall surface)
+                    bool openRight = map.GetTile(tx + 1, ty) == TileType.Empty
+                                  && map.GetTile(tx + 1, ty - 1) == TileType.Empty;
+                    bool openLeft  = map.GetTile(tx - 1, ty) == TileType.Empty
+                                  && map.GetTile(tx - 1, ty - 1) == TileType.Empty;
+
+                    if (!openRight && !openLeft) continue;
+
+                    // Need enough open space for the bridge to grow (at least 4 tiles)
+                    int dir = openRight ? 1 : -1;
+                    int clearance = 0;
+                    for (int dx = 1; dx <= 6; dx++)
+                    {
+                        int nx = tx + dir * dx;
+                        if (nx < 1 || nx >= w - 1) break;
+                        if (map.GetTile(nx, ty) != TileType.Empty) break;
+                        clearance++;
+                    }
+                    if (clearance < 3) continue;
+
+                    // Enforce minimum spacing
+                    bool tooClose = false;
+                    foreach (var (px, py) in placed)
+                        if (Math.Abs(tx - px) < MinSpacingBridge && Math.Abs(ty - py) < MinSpacingBridge)
+                        { tooClose = true; break; }
+                    if (tooClose) continue;
+
+                    // Random chance
+                    if (rng.NextDouble() > 1.0 / 120.0) continue;
+
+                    // Pick growth direction (prefer horizontal, occasionally diagonal)
+                    Vector2 growDir = rng.NextDouble() < 0.7
+                        ? new Vector2(dir, 0f)
+                        : Vector2.Normalize(new Vector2(dir, -0.5f));
+
+                    int segCount = 3 + rng.Next(4); // 3–6 segments
+                    int bridgeSeed = seed ^ (tx * 1031 + ty * 7919);
+
+                    // Anchor spawn position: empty tile adjacent to the wall
+                    Vector2 anchorPos = TileMap.TileCenter(tx + dir, ty);
+
+                    placements.Add(new ObjectPlacement
+                    {
+                        Type          = ObjectType.CrystalBridge,
+                        PixelPosition = anchorPos,
+                        GrowDirection = growDir,
+                        SegmentCount  = segCount,
+                        Variant       = bridgeSeed,
+                    });
+
+                    placed.Add((tx, ty));
+                    count++;
+                }
+            }
+        }
+
         // ── Controllable entity placement ──────────────────────────────────────
 
         /// <summary>
@@ -1231,13 +1418,15 @@ namespace Bloop.Generators
         /// </summary>
         private static void PlaceControllableEntities(
             TileMap map, CavityAnalyzer analyzer, Random rng,
-            List<ObjectPlacement> placements, int w, int h, int depth)
+            List<ObjectPlacement> placements, int w, int h, int depth,
+            DifficultyProfile difficulty = default)
         {
             // Solitary entities: enforce minimum tile spacing between same-type placements
-            const int SolitarySpacing  = 8;  // tiles — SilkWeaverSpider, DeepBurrowWorm
+            const int SolitarySpacing   = 8;  // tiles — SilkWeaverSpider, DeepBurrowWorm
             const int GregariousSpacing = 20; // tiles — gregarious anchor spacing
 
-            // ── Echo Bat: ceiling tiles — gregarious, spawn in clusters ────────
+            // ── Echo Bat: ceiling tiles — gregarious (unlocked at level 4) ─────
+            if (difficulty.Level == 0 || difficulty.HasEchoBat)
             {
                 int anchorCount = 0;
                 int maxAnchors  = Math.Min(5, 3 + depth);
@@ -1252,7 +1441,6 @@ namespace Bloop.Generators
                         if (Math.Abs(tx - lastTx) < GregariousSpacing) continue;
                         if (rng.NextDouble() > 1.0 / 80.0) continue;
 
-                        // Anchor bat
                         var anchor = TileMap.TileCenter(tx, ty + 1);
                         placements.Add(new ObjectPlacement
                         {
@@ -1262,7 +1450,6 @@ namespace Bloop.Generators
                         lastTx = tx;
                         anchorCount++;
 
-                        // Cluster: 1-3 additional bats within 3-tile radius (ceiling → spawn below solid tile)
                         int clusterSize = 1 + rng.Next(3);
                         PlaceCluster(map, rng, placements, ObjectType.EchoBat,
                             anchor, clusterSize, radiusTiles: 3, w, h,
@@ -1274,18 +1461,18 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Silk Weaver Spider: wall surfaces — solitary, enforced spacing ─
+            // ── Silk Weaver Spider: wall surfaces (unlocked at level 7) ─────────
+            if (difficulty.Level == 0 || difficulty.HasSilkWeaverSpider)
             {
-                int count  = 0;
+                int count    = 0;
                 int maxCount = 1 + (depth >= 2 ? 1 : 0);
-                var placed = new List<(int tx, int ty)>();
+                var placed   = new List<(int tx, int ty)>();
                 for (int tx = 2; tx < w - 2 && count < maxCount; tx++)
                 {
                     for (int ty = 3; ty < h - 3 && count < maxCount; ty++)
                     {
                         if (!TileProperties.IsSolid(map.GetTile(tx, ty))) continue;
                         if (map.GetTile(tx + 1, ty) != TileType.Empty) continue;
-                        // Enforce solitary spacing against all previously placed spiders
                         bool tooClose = false;
                         foreach (var (px, py) in placed)
                             if (Math.Abs(tx - px) < SolitarySpacing && Math.Abs(ty - py) < SolitarySpacing)
@@ -1304,8 +1491,8 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Chain Centipede: ceiling surfaces — gregarious (depth ≥ 2) ─────
-            if (depth >= 2)
+            // ── Chain Centipede: ceiling surfaces (unlocked at level 11) ─────────
+            if (difficulty.Level == 0 || difficulty.HasChainCentipede)
             {
                 int anchorCount = 0;
                 int maxAnchors  = 2 + (depth >= 4 ? 2 : 0);
@@ -1328,7 +1515,6 @@ namespace Bloop.Generators
                         lastTx = tx;
                         anchorCount++;
 
-                        // Cluster: 1-2 additional centipedes within 3-tile radius (ceiling → spawn below solid tile)
                         int clusterSize = 1 + rng.Next(2);
                         PlaceCluster(map, rng, placements, ObjectType.ChainCentipede,
                             anchor, clusterSize, radiusTiles: 3, w, h,
@@ -1340,7 +1526,7 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Luminescent Glowworm: floor alcoves — gregarious, large clusters
+            // ── Luminescent Glowworm: floor alcoves — always available ────────
             {
                 int anchorCount = 0;
                 int maxAnchors  = Math.Min(6, 4 + depth);
@@ -1366,7 +1552,6 @@ namespace Bloop.Generators
                         lastTx = tx;
                         anchorCount++;
 
-                        // Cluster: 2-4 additional glowworms within 2-tile radius
                         int clusterSize = 2 + rng.Next(3);
                         PlaceCluster(map, rng, placements, ObjectType.LuminescentGlowworm,
                             anchor, clusterSize, radiusTiles: 2, w, h,
@@ -1377,12 +1562,12 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Deep Burrow Worm: wide floor — solitary, enforced spacing ──────
-            if (depth >= 2)
+            // ── Deep Burrow Worm: wide floor (unlocked at level 16) ───────────
+            if (difficulty.Level == 0 || difficulty.HasDeepBurrowWorm)
             {
-                int count  = 0;
+                int count    = 0;
                 int maxCount = 1 + (depth >= 4 ? 1 : 0);
-                var placed = new List<(int tx, int ty)>();
+                var placed   = new List<(int tx, int ty)>();
                 for (int ty = 3; ty < h - 2 && count < maxCount; ty++)
                 {
                     for (int tx = 4; tx < w - 4 && count < maxCount; tx++)
@@ -1399,7 +1584,6 @@ namespace Bloop.Generators
                                 floorW++;
                         }
                         if (floorW < 4) continue;
-                        // Enforce solitary spacing
                         bool tooClose = false;
                         foreach (var (px, py) in placed)
                             if (Math.Abs(tx - px) < SolitarySpacing && Math.Abs(ty - py) < SolitarySpacing)
@@ -1418,7 +1602,8 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Blind Cave Salamander: floor near shaft bottoms — spawn in pairs
+            // ── Blind Cave Salamander: floor near shaft bottoms (unlocked at level 4) ──
+            if (difficulty.Level == 0 || difficulty.HasBlindCaveSalamander)
             {
                 int count    = 0;
                 int maxCount = 1 + (depth >= 3 ? 1 : 0);
@@ -1444,7 +1629,6 @@ namespace Bloop.Generators
                         lastTx = tx;
                         count++;
 
-                        // Spawn a second salamander within 4-tile radius (pair behavior)
                         PlaceCluster(map, rng, placements, ObjectType.BlindCaveSalamander,
                             anchor, count: 1, radiusTiles: 4, w, h,
                             tileValidator: (cx, cy) =>
@@ -1454,7 +1638,7 @@ namespace Bloop.Generators
                 }
             }
 
-            // ── Luminous Isopod: floor — gregarious, spawn in groups ───────────
+            // ── Luminous Isopod: floor — always available ─────────────────────
             {
                 int anchorCount = 0;
                 int maxAnchors  = 1 + (depth >= 2 ? 2 : 0);
@@ -1477,7 +1661,6 @@ namespace Bloop.Generators
                         lastTx = tx;
                         anchorCount++;
 
-                        // Cluster: 1-3 additional isopods within 3-tile radius
                         int clusterSize = 1 + rng.Next(3);
                         PlaceCluster(map, rng, placements, ObjectType.LuminousIsopod,
                             anchor, clusterSize, radiusTiles: 3, w, h,

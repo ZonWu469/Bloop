@@ -56,6 +56,20 @@ namespace Bloop.Entities
         /// <summary>The entity nearest to the mouse cursor during selection (highlighted).</summary>
         public ControllableEntity? HighlightedEntity { get; private set; }
 
+        // ── Effect dispatch state ──────────────────────────────────────────────
+        /// <summary>
+        /// True once inter-entity effects have been dispatched for the current skill activation.
+        /// Prevents re-dispatching the same skill fire on subsequent frames.
+        /// Reset when a new control session begins.
+        /// </summary>
+        private bool _effectsDispatched = false;
+
+        /// <summary>
+        /// Tracks whether the active entity's skill was active last frame.
+        /// Used to detect the rising edge of skill activation.
+        /// </summary>
+        private bool _skillWasActive = false;
+
         // ── Events ─────────────────────────────────────────────────────────────
         /// <summary>Fired when possession of an entity begins.</summary>
         public event Action<ControllableEntity>? OnControlStarted;
@@ -168,6 +182,10 @@ namespace Bloop.Entities
             ActiveEntity  = entity;
             IsControlling = true;
 
+            // Reset effect dispatch state for new control session
+            _effectsDispatched = false;
+            _skillWasActive    = false;
+
             // Special case: Luminous Isopod attaches to player instead of freezing them
             if (entity.EntityType == ControllableEntityType.LuminousIsopod
                 && entity is LuminousIsopod isopod)
@@ -203,6 +221,80 @@ namespace Bloop.Entities
                 EndControl();
                 return;
             }
+
+            // ── Inter-entity effect dispatch ───────────────────────────────────
+            // Detect when the active entity's skill fires and dispatch effects to
+            // nearby entities. Only dispatches once per skill activation.
+            if (ActiveEntity != null && !_effectsDispatched)
+            {
+                bool skillJustFired = DetectSkillFired(ActiveEntity);
+                if (skillJustFired)
+                {
+                    _effectsDispatched = true;
+                    var nearby = GetEntitiesInRadius(level, ActiveEntity.PixelPosition,
+                        ActiveEntity.GetEffectRadius());
+                    var (same, diff) = PartitionByType(nearby, ActiveEntity.EntityType);
+                    ActiveEntity.ApplySameTypeEffect(same);
+                    ActiveEntity.ApplyDifferentTypeEffect(diff);
+                }
+            }
+
+            // Reset dispatch flag when skill is no longer active (allows re-use on cooldown reset)
+            if (ActiveEntity?.Skill != null && !ActiveEntity.Skill.IsActive && _effectsDispatched)
+            {
+                // Only reset if the skill is on cooldown (meaning it fired and completed)
+                if (!ActiveEntity.Skill.IsReady)
+                    _effectsDispatched = false;
+            }
+        }
+
+        /// <summary>
+        /// Detect the rising edge of a skill activation for the given entity.
+        /// Returns true on the first frame the skill fires (pulse/flash/surge starts,
+        /// or hold-skill transitions from inactive to active).
+        /// </summary>
+        private bool DetectSkillFired(ControllableEntity entity)
+        {
+            // Entity-specific detection via public state flags
+            switch (entity)
+            {
+                case EchoBat bat:
+                    // Pulse just started: active and radius is near zero
+                    if (bat.PulseActive && bat.PulseRadius < 20f)
+                        return true;
+                    break;
+
+                case ChainCentipede centipede:
+                    if (centipede.PulseActive && centipede.PulseRadius < 20f)
+                        return true;
+                    break;
+
+                case LuminescentGlowworm worm:
+                    if (worm.FlashActive && worm.FlashRadius < 20f)
+                        return true;
+                    break;
+
+                case LuminousIsopod isopod:
+                    if (isopod.GlowSurgeActive && isopod.GlowSurgeRadius < 20f)
+                        return true;
+                    break;
+
+                default:
+                    // For hold-type skills (spider web trail, salamander slime):
+                    // detect rising edge — skill just became active this frame
+                    if (entity.Skill != null)
+                    {
+                        bool isActiveNow = entity.Skill.IsActive;
+                        bool justActivated = isActiveNow && !_skillWasActive;
+                        _skillWasActive = isActiveNow;
+                        return justActivated;
+                    }
+                    break;
+            }
+
+            // Track skill active state for next frame (for non-pulse entities)
+            _skillWasActive = entity.Skill?.IsActive ?? false;
+            return false;
         }
 
         private void EndControl()
@@ -238,6 +330,25 @@ namespace Bloop.Entities
 
             // Update isopod position to track player
             // (LuminousIsopod.UpdateControlled handles this internally)
+
+            // ── Inter-entity effect dispatch for isopod ────────────────────────
+            if (!_effectsDispatched)
+            {
+                bool skillJustFired = DetectSkillFired(ActiveEntity);
+                if (skillJustFired)
+                {
+                    _effectsDispatched = true;
+                    var nearby = GetEntitiesInRadius(level, ActiveEntity.PixelPosition,
+                        ActiveEntity.GetEffectRadius());
+                    var (same, diff) = PartitionByType(nearby, ActiveEntity.EntityType);
+                    ActiveEntity.ApplySameTypeEffect(same);
+                    ActiveEntity.ApplyDifferentTypeEffect(diff);
+                }
+            }
+
+            // Reset dispatch flag when glow surge ends (allows re-use after cooldown)
+            if (ActiveEntity is LuminousIsopod iso && !iso.GlowSurgeActive && _effectsDispatched)
+                _effectsDispatched = false;
 
             // T key throw is handled inside LuminousIsopod.UpdateControlled
             // RMB releases the isopod early

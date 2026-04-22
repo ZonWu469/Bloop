@@ -194,7 +194,7 @@ namespace Bloop.Entities
     {
         private readonly BlindCaveSalamander _salamander;
         public SlimeTrailSpitSkill(BlindCaveSalamander s)
-            : base("Slime Trail Spit", SkillActivationType.Instant, cooldown: 4f) => _salamander = s;
+            : base("Slime Trail Spit", "Slime trail immobilizes enemies, draws salamanders near", SkillActivationType.Instant, cooldown: 4f) => _salamander = s;
         protected override void OnActivate(float power)
         {
             // Effect applied via ApplySameTypeEffect / ApplyDifferentTypeEffect

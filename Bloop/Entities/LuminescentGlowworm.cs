@@ -218,7 +218,7 @@ namespace Bloop.Entities
     {
         private readonly LuminescentGlowworm _worm;
         public BioluminescenceFlashSkill(LuminescentGlowworm w)
-            : base("Bioluminescence Flash", SkillActivationType.Charge, cooldown: 5f, maxChargeTime: 3f)
+            : base("Bioluminescence Flash", "Flash disorients all nearby creatures", SkillActivationType.Charge, cooldown: 5f, maxChargeTime: 3f)
             => _worm = w;
         protected override void OnActivate(float power) => _worm.TriggerFlash();
     }

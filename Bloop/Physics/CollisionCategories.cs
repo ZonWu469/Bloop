@@ -48,15 +48,21 @@ namespace Bloop.Physics
         /// </summary>
         public const Category Entity = Category.Cat11;
 
+        /// <summary>
+        /// Crystal bridge segment bodies — walkable platforms that grow/retract on a timer.
+        /// The grappling hook can attach to these surfaces.
+        /// </summary>
+        public const Category CrystalBridge = Category.Cat12;
+
         // ── Collision masks (what each category collides WITH) ─────────────────
 
-        /// <summary>Player collides with terrain, platforms, disappearing platforms, and hazards.
-        /// Does NOT include Entity — entities are sensor-only and don't block the player.</summary>
+        /// <summary>Player collides with terrain, platforms, disappearing platforms, hazards,
+        /// and crystal bridge segments. Does NOT include Entity.</summary>
         public const Category PlayerCollidesWith =
-            Terrain | Platform | DisappearingPlatform | Hazard | Climbable | Collectible;
+            Terrain | Platform | DisappearingPlatform | Hazard | Climbable | Collectible | CrystalBridge;
 
-        /// <summary>Grapple hook collides only with terrain and climbable surfaces.</summary>
-        public const Category GrappleCollidesWith = Terrain | Climbable;
+        /// <summary>Grapple hook collides with terrain, climbable surfaces, and crystal bridges.</summary>
+        public const Category GrappleCollidesWith = Terrain | Climbable | CrystalBridge;
 
         /// <summary>Triggers are sensors — they detect player overlap but don't block movement.</summary>
         public const Category TriggerCollidesWith = Player;

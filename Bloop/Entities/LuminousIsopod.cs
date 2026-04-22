@@ -475,7 +475,7 @@ namespace Bloop.Entities
     {
         private readonly LuminousIsopod _isopod;
         public GlowSurgeSkill(LuminousIsopod i)
-            : base("Glow Surge", SkillActivationType.Instant, cooldown: 6f) => _isopod = i;
+            : base("Glow Surge", "Glow surge disorients all nearby creatures", SkillActivationType.Instant, cooldown: 6f) => _isopod = i;
         protected override void OnActivate(float power) => _isopod.TriggerGlowSurge();
     }
 }

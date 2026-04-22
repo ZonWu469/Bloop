@@ -14,6 +14,10 @@ namespace Bloop.Generators
         CollapseHall,    // Wide horizontal corridor with low ceiling and rubble pillars
         ShrineAlcove,    // Small niche with symmetrical walls — resonance shard spawn
         FungalChamber,   // Rounded oval chamber — glow vine / lichen spawn
+        // ── Large rooms (added for 160-wide maps) ─────────────────────────────
+        GrandCavern,     // 30×16 wide open chamber with scattered pillars
+        CrystalGallery,  // 26×14 long horizontal gallery with crystal alcoves
+        ColossalShaft,   // 12×30 very tall vertical shaft with ledge platforms
     }
 
     /// <summary>
@@ -127,6 +131,83 @@ namespace Bloop.Generators
             "....##########....",
         };
 
+        // ── Large room templates (for 160-wide maps) ───────────────────────────
+
+        // GrandCavern: 30×16 — wide open chamber with scattered pillars
+        private static readonly string[] GrandCavernTemplate =
+        {
+            "..............................",
+            "..............................",
+            "..............................",
+            "....##.......##.......##......",
+            "....##.......##.......##......",
+            "..............................",
+            "..............................",
+            "..............................",
+            "..............................",
+            "....##.......##.......##......",
+            "....##.......##.......##......",
+            "..............................",
+            "..............................",
+            "..............................",
+            "..............................",
+            "..............................",
+        };
+
+        // CrystalGallery: 26×14 — long horizontal gallery with alcoves
+        private static readonly string[] CrystalGalleryTemplate =
+        {
+            "..........................",
+            "..........................",
+            "##....##....##....##....##",
+            "##....##....##....##....##",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+            "##....##....##....##....##",
+            "##....##....##....##....##",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+        };
+
+        // ColossalShaft: 12×30 — very tall vertical shaft with ledge platforms
+        private static readonly string[] ColossalShaftTemplate =
+        {
+            "............",
+            "............",
+            "......####..",
+            "......####..",
+            "............",
+            "............",
+            "..####......",
+            "..####......",
+            "............",
+            "............",
+            "......####..",
+            "......####..",
+            "............",
+            "............",
+            "..####......",
+            "..####......",
+            "............",
+            "............",
+            "......####..",
+            "......####..",
+            "............",
+            "............",
+            "..####......",
+            "..####......",
+            "............",
+            "............",
+            "............",
+            "............",
+            "............",
+            "............",
+        };
+
         // ── Template registry ──────────────────────────────────────────────────
 
         private static (string[] template, int w, int h) GetTemplate(LandmarkKind kind)
@@ -138,6 +219,9 @@ namespace Bloop.Generators
                 LandmarkKind.CollapseHall   => (CollapseHallTemplate,   22,  8),
                 LandmarkKind.ShrineAlcove   => (ShrineAlcoveTemplate,   10, 10),
                 LandmarkKind.FungalChamber  => (FungalChamberTemplate,  16, 10),
+                LandmarkKind.GrandCavern    => (GrandCavernTemplate,    30, 16),
+                LandmarkKind.CrystalGallery => (CrystalGalleryTemplate, 26, 14),
+                LandmarkKind.ColossalShaft  => (ColossalShaftTemplate,  12, 30),
                 _                           => (CrystalGroveTemplate,   18, 12),
             };
         }
@@ -145,7 +229,7 @@ namespace Bloop.Generators
         // ── Public API ─────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Inject 1–3 landmark rooms into the map.
+        /// Inject 2–5 landmark rooms into the map.
         /// Rooms are placed in the middle vertical band (20%–80% of height)
         /// and spread horizontally to avoid clustering.
         /// Returns the list of placed rooms for downstream use (e.g. object placement).
@@ -154,10 +238,10 @@ namespace Bloop.Generators
         {
             var placed = new List<LandmarkRoom>();
 
-            // Number of rooms scales with depth (1 at depth 1, up to 3 at depth 4+)
-            int roomCount = Math.Min(1 + (depth - 1) / 2, 3);
+            // Number of rooms scales with depth (2 at depth 1, up to 5 at depth 7+)
+            int roomCount = Math.Min(2 + (depth - 1) / 2, 5);
 
-            // Candidate kinds — pick without replacement
+            // Candidate kinds — pick without replacement, include large rooms
             var kinds = new List<LandmarkKind>
             {
                 LandmarkKind.CrystalGrove,
@@ -165,6 +249,9 @@ namespace Bloop.Generators
                 LandmarkKind.CollapseHall,
                 LandmarkKind.ShrineAlcove,
                 LandmarkKind.FungalChamber,
+                LandmarkKind.GrandCavern,
+                LandmarkKind.CrystalGallery,
+                LandmarkKind.ColossalShaft,
             };
             Shuffle(kinds, rng);
 

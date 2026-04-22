@@ -27,6 +27,9 @@ namespace Bloop.Entities
         /// <summary>Display name shown in the HUD (e.g. "Sonic Pulse").</summary>
         public string Name { get; }
 
+        /// <summary>Short description of the skill's effect, shown above the Q button while controlling.</summary>
+        public string Description { get; }
+
         /// <summary>How this skill is triggered.</summary>
         public SkillActivationType ActivationType { get; }
 
@@ -57,10 +60,11 @@ namespace Bloop.Entities
             : 0f;
 
         // ── Constructor ────────────────────────────────────────────────────────
-        protected EntitySkill(string name, SkillActivationType activationType,
+        protected EntitySkill(string name, string description, SkillActivationType activationType,
             float cooldown, float maxChargeTime = 0f)
         {
             Name           = name;
+            Description    = description;
             ActivationType = activationType;
             Cooldown       = cooldown;
             MaxChargeTime  = maxChargeTime;

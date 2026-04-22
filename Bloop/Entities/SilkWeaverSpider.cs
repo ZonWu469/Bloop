@@ -240,7 +240,7 @@ namespace Bloop.Entities
     {
         private readonly SilkWeaverSpider _spider;
         public PheromoneWebTrailSkill(SilkWeaverSpider spider)
-            : base("Pheromone Web Trail", SkillActivationType.Hold, cooldown: 0f) => _spider = spider;
+            : base("Pheromone Web Trail", "Web trail snares enemies, coordinates nearby spiders", SkillActivationType.Hold, cooldown: 0f) => _spider = spider;
         protected override void OnActivate(float power) { }
         protected override void OnDeactivate() { _spider.WebTrailPoints.Clear(); }
     }

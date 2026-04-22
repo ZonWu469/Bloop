@@ -31,7 +31,7 @@ namespace Bloop.Generators
 
     /// <summary>
     /// Biome tier determines the visual palette and structural parameters of a level.
-    /// Depth 1–5: ShallowCaves, 6–12: FungalGrottos, 13–20: CrystalDepths, 21+: TheAbyss.
+    /// Biome is now chosen randomly per level from the seed, not depth-based.
     /// </summary>
     public enum BiomeTier
     {
@@ -75,68 +75,92 @@ namespace Bloop.Generators
         public float DensityPlatform    { get; init; }
 
         // ── Factory ────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns a BiomeProfile chosen randomly from the level seed.
+        /// Biome is independent of depth — any level can be any biome.
+        /// Shaft/worm counts are scaled up for the wider 160-tile map.
+        /// </summary>
+        public static BiomeProfile ForLevel(int level, int seed)
+        {
+            // Derive a stable biome RNG from seed + level so the same level always
+            // gets the same biome, but different levels get different biomes.
+            var biomeRng = new Random(seed ^ (level * 7919));
+            var tier     = (BiomeTier)biomeRng.Next(4);
+            return BuildProfile(tier);
+        }
+
+        /// <summary>Legacy depth-based factory kept for fallback/testing.</summary>
         public static BiomeProfile ForDepth(int depth)
         {
-            if (depth <= 5)
-                return new BiomeProfile
-                {
-                    Tier            = BiomeTier.ShallowCaves,
-                    NoiseScale      = 0.08f,
-                    ThresholdOffset = 0f,
-                    CavityOffset    = 0.10f,
-                    MinShafts = 2, MaxShafts = 4,
-                    MinWorms  = 4, MaxWorms  = 8,
-                    WormMinWidth = 2, WormMaxWidth = 4,
-                    DensityGlowVine   = 0.8f,
-                    DensityRootClump  = 0.7f,
-                    DensityStun       = 0.6f,
-                    DensityVentFlower = 1.4f,
-                    DensityLichen     = 0.8f,
-                    DensityPlatform   = 1.3f,
-                };
-            if (depth <= 12)
-                return new BiomeProfile
-                {
-                    Tier            = BiomeTier.FungalGrottos,
-                    NoiseScale      = 0.09f,
-                    ThresholdOffset = 0.01f,
-                    CavityOffset    = 0.08f,
-                    MinShafts = 2, MaxShafts = 4,
-                    MinWorms  = 5, MaxWorms  = 9,
-                    WormMinWidth = 2, WormMaxWidth = 3,
-                    DensityGlowVine   = 1.5f,
-                    DensityRootClump  = 1.3f,
-                    DensityStun       = 0.9f,
-                    DensityVentFlower = 0.9f,
-                    DensityLichen     = 1.6f,
-                    DensityPlatform   = 1.0f,
-                };
-            if (depth <= 20)
-                return new BiomeProfile
-                {
-                    Tier            = BiomeTier.CrystalDepths,
-                    NoiseScale      = 0.10f,
-                    ThresholdOffset = 0.02f,
-                    CavityOffset    = 0.06f,
-                    MinShafts = 3, MaxShafts = 5,
-                    MinWorms  = 3, MaxWorms  = 6,
-                    WormMinWidth = 2, WormMaxWidth = 3,
-                    DensityGlowVine   = 0.6f,
-                    DensityRootClump  = 0.5f,
-                    DensityStun       = 1.6f,
-                    DensityVentFlower = 0.5f,
-                    DensityLichen     = 0.7f,
-                    DensityPlatform   = 0.8f,
-                };
-            // TheAbyss (depth 21+)
-            return new BiomeProfile
+            if (depth <= 5)  return BuildProfile(BiomeTier.ShallowCaves);
+            if (depth <= 12) return BuildProfile(BiomeTier.FungalGrottos);
+            if (depth <= 20) return BuildProfile(BiomeTier.CrystalDepths);
+            return BuildProfile(BiomeTier.TheAbyss);
+        }
+
+        /// <summary>
+        /// Build a BiomeProfile for the given tier.
+        /// Shaft and worm counts are tuned for the 160-tile-wide map.
+        /// </summary>
+        private static BiomeProfile BuildProfile(BiomeTier tier) => tier switch
+        {
+            BiomeTier.ShallowCaves => new BiomeProfile
+            {
+                Tier            = BiomeTier.ShallowCaves,
+                NoiseScale      = 0.08f,
+                ThresholdOffset = 0f,
+                CavityOffset    = 0.10f,
+                MinShafts = 5, MaxShafts = 7,
+                MinWorms  = 8, MaxWorms  = 14,
+                WormMinWidth = 2, WormMaxWidth = 4,
+                DensityGlowVine   = 0.8f,
+                DensityRootClump  = 0.7f,
+                DensityStun       = 0.6f,
+                DensityVentFlower = 1.4f,
+                DensityLichen     = 0.8f,
+                DensityPlatform   = 1.3f,
+            },
+            BiomeTier.FungalGrottos => new BiomeProfile
+            {
+                Tier            = BiomeTier.FungalGrottos,
+                NoiseScale      = 0.09f,
+                ThresholdOffset = 0.01f,
+                CavityOffset    = 0.08f,
+                MinShafts = 5, MaxShafts = 7,
+                MinWorms  = 9, MaxWorms  = 15,
+                WormMinWidth = 2, WormMaxWidth = 3,
+                DensityGlowVine   = 1.5f,
+                DensityRootClump  = 1.3f,
+                DensityStun       = 0.9f,
+                DensityVentFlower = 0.9f,
+                DensityLichen     = 1.6f,
+                DensityPlatform   = 1.0f,
+            },
+            BiomeTier.CrystalDepths => new BiomeProfile
+            {
+                Tier            = BiomeTier.CrystalDepths,
+                NoiseScale      = 0.10f,
+                ThresholdOffset = 0.02f,
+                CavityOffset    = 0.06f,
+                MinShafts = 6, MaxShafts = 8,
+                MinWorms  = 6, MaxWorms  = 10,
+                WormMinWidth = 2, WormMaxWidth = 3,
+                DensityGlowVine   = 0.6f,
+                DensityRootClump  = 0.5f,
+                DensityStun       = 1.6f,
+                DensityVentFlower = 0.5f,
+                DensityLichen     = 0.7f,
+                DensityPlatform   = 0.8f,
+            },
+            _ /* TheAbyss */ => new BiomeProfile
             {
                 Tier            = BiomeTier.TheAbyss,
                 NoiseScale      = 0.11f,
                 ThresholdOffset = 0.03f,
                 CavityOffset    = 0.04f,
-                MinShafts = 3, MaxShafts = 5,
-                MinWorms  = 2, MaxWorms  = 5,
+                MinShafts = 6, MaxShafts = 8,
+                MinWorms  = 5, MaxWorms  = 9,
                 WormMinWidth = 2, WormMaxWidth = 2,
                 DensityGlowVine   = 0.3f,
                 DensityRootClump  = 0.4f,
@@ -144,8 +168,8 @@ namespace Bloop.Generators
                 DensityVentFlower = 0.2f,
                 DensityLichen     = 0.5f,
                 DensityPlatform   = 0.6f,
-            };
-        }
+            },
+        };
     }
 
     /// <summary>
@@ -153,7 +177,7 @@ namespace Bloop.Generators
     ///
     /// Pipeline:
     ///   1.  Initialize two PerlinNoise instances (primary + low-freq cavity)
-    ///   2.  Generate dual noise grids at level dimensions (80 × 120 tiles)
+    ///   2.  Generate dual noise grids at level dimensions (160 × 120 tiles)
     ///   3.  Apply combined threshold: primary noise + cavity noise create organic spaces
     ///   4.  Force border walls and floor
     ///   5.  Carve 2–4 branching vertical shafts with horizontal alcoves
@@ -172,7 +196,7 @@ namespace Bloop.Generators
     public static class LevelGenerator
     {
         // ── Level dimensions ───────────────────────────────────────────────────
-        public const int LevelWidth  = 80;
+        public const int LevelWidth  = 160;
         public const int LevelHeight = 120;
 
         // ── Primary noise parameters ───────────────────────────────────────────
@@ -200,15 +224,13 @@ namespace Bloop.Generators
         private const int   MaxRetries = 5;
 
         // ── Shaft parameters ──────────────────────────────────────────────────
-        private const int MinShafts = 2;
-        private const int MaxShafts = 4;
+        // Note: actual shaft counts come from BiomeProfile (scaled for 160-wide map).
         private const int ShaftWidth = 3; // tiles wide
 
         // ── Worm tunnel parameters ─────────────────────────────────────────────
-        private const int MinWorms = 4;
-        private const int MaxWorms = 8;
+        // Note: actual worm counts come from BiomeProfile (scaled for 160-wide map).
         private const int WormMinSteps = 20;
-        private const int WormMaxSteps = 50;
+        private const int WormMaxSteps = 80;  // increased from 50 to span wider map
         private const int WormMinWidth = 2;
         private const int WormMaxWidth = 4;
 
@@ -252,7 +274,7 @@ namespace Bloop.Generators
 
         private static GenerationResult? TryGenerate(int effectiveSeed, int depth, float threshold)
         {
-            var biome = BiomeProfile.ForDepth(depth);
+            var biome = BiomeProfile.ForLevel(depth, effectiveSeed);
             var rng   = new Random(effectiveSeed);
             var map   = new TileMap(LevelWidth, LevelHeight);
             var noise = new PerlinNoise(effectiveSeed);
@@ -351,8 +373,9 @@ namespace Bloop.Generators
             bool valid = PathValidator.Validate(map, entryPixel, exitPixel, rng);
             if (!valid) return null;
 
-            // ── Step 15: Place objects (biome density multipliers) ─────────────
-            var placements = ObjectPlacer.PlaceObjects(map, effectiveSeed, depth, biome);
+            // ── Step 15: Place objects (biome density + difficulty gating) ─────
+            var difficulty = DifficultyProfile.ForLevel(depth);
+            var placements = ObjectPlacer.PlaceObjects(map, effectiveSeed, depth, biome, difficulty);
 
             // ── Step 15b: Post-placement passability clearance check ───────────
             // Removes wall-attached objects that block narrow passages, ensuring
@@ -757,7 +780,7 @@ namespace Bloop.Generators
             int w = map.Width;
             int h = map.Height;
 
-            const int BandPeriod        = 12;   // pillar band every 12 tiles
+            const int BandPeriod        = 16;   // pillar band every 16 tiles (wider map)
             const int BandWidth         = 2;    // 2-tile-wide pillar column
             const float PillarThreshold = 0.58f;
             const int LocalCheckRadius  = 6;    // flood-fill radius for connectivity check

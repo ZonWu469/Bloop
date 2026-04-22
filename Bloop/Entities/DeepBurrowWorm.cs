@@ -242,7 +242,7 @@ namespace Bloop.Entities
     {
         private readonly DeepBurrowWorm _worm;
         public SeismicBurrowSkill(DeepBurrowWorm w)
-            : base("Seismic Burrow", SkillActivationType.Instant, cooldown: 6f) => _worm = w;
+            : base("Seismic Burrow", "Burrow through soft terrain", SkillActivationType.Instant, cooldown: 6f) => _worm = w;
         protected override void OnActivate(float power)
         {
             // Burrow toward a point 80px ahead in facing direction

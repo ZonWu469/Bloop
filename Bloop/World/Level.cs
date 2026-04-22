@@ -187,8 +187,8 @@ namespace Bloop.World
                 {
                     var ventLight = new LightSource(
                         ventFlower.PixelPosition,
-                        radius:    140f,
-                        intensity: 1.2f,
+                        radius:    70f,
+                        intensity: 0.6f,
                         color:     new Color(120, 255, 200));
                     _levelLights.Add(ventLight);
                 }
@@ -200,8 +200,8 @@ namespace Bloop.World
                     shard.OnCollected += () => ShardsCollected++;
                     var shardLight = new LightSource(
                         shard.PixelPosition,
-                        radius:    70f,
-                        intensity: 1.4f,
+                        radius:    35f,
+                        intensity: 0.7f,
                         color:     new Color(180, 140, 255));
                     _levelLights.Add(shardLight);
                     shard.SetLightSource(shardLight);
@@ -211,13 +211,13 @@ namespace Bloop.World
                 if (obj is CaveLichen lichen && lichen.Rarity == Generators.ItemRarity.Rare)
                 {
                     _levelLights.Add(new LightSource(
-                        lichen.PixelPosition, radius: 50f, intensity: 0.9f,
+                        lichen.PixelPosition, radius: 25f, intensity: 0.45f,
                         color: new Color(160, 220, 60)));
                 }
                 else if (obj is BlindFish fish && fish.Rarity == Generators.ItemRarity.Rare)
                 {
                     _levelLights.Add(new LightSource(
-                        fish.PixelPosition, radius: 45f, intensity: 0.8f,
+                        fish.PixelPosition, radius: 22f, intensity: 0.4f,
                         color: new Color(100, 160, 220)));
                 }
 
@@ -226,8 +226,8 @@ namespace Bloop.World
                 {
                     var ionLight = new LightSource(
                         ion.PixelPosition,
-                        radius:    90f,
-                        intensity: 1.2f,
+                        radius:    45f,
+                        intensity: 0.6f,
                         color:     new Color(196, 152, 255));
                     _levelLights.Add(ionLight);
                     ion.SetLightSource(ionLight);
@@ -236,8 +236,8 @@ namespace Bloop.World
                 {
                     var mossLight = new LightSource(
                         moss.PixelPosition,
-                        radius:    55f,
-                        intensity: 0.8f,
+                        radius:    28f,
+                        intensity: 0.4f,
                         color:     new Color(168, 214, 90));
                     _levelLights.Add(mossLight);
                     moss.SetLightSource(mossLight);
@@ -246,19 +246,30 @@ namespace Bloop.World
                 {
                     var crystalLight = new LightSource(
                         crystal.PixelPosition,
-                        radius:    100f,
-                        intensity: 1.3f,
+                        radius:    50f,
+                        intensity: 0.65f,
                         color:     CrystalCluster.ColorFor(crystal.Flavor));
                     _levelLights.Add(crystalLight);
                     crystal.SetLightSource(crystalLight);
+                }
+                else if (obj is CrystalBridge bridge)
+                {
+                    // Starts dim; CrystalBridge.UpdateLight() drives intensity/radius
+                    var bridgeLight = new LightSource(
+                        bridge.PixelPosition,
+                        radius:    20f,
+                        intensity: 0.05f,
+                        color:     new Color(110, 200, 240));
+                    _levelLights.Add(bridgeLight);
+                    bridge.SetLightSource(bridgeLight);
                 }
 
                 if (obj is LuminescentGlowworm worm)
                 {
                     var wormLight = new LightSource(
                         worm.PixelPosition,
-                        radius:    200f,
-                        intensity: 2.5f,
+                        radius:    100f,
+                        intensity: 1.25f,
                         color:     new Color(120, 240, 160));
                     wormLight.FlickerAmplitude = 0.06f;
                     wormLight.FlickerFrequency = 3f;
@@ -270,8 +281,8 @@ namespace Bloop.World
                 {
                     var isopodLight = new LightSource(
                         isopod.PixelPosition,
-                        radius:    200f,
-                        intensity: 2.2f,
+                        radius:    100f,
+                        intensity: 1.1f,
                         color:     new Color(80, 200, 220));
                     isopodLight.FlickerAmplitude = 0.05f;
                     isopodLight.FlickerFrequency = 4f;
@@ -611,6 +622,10 @@ namespace Bloop.World
                 ObjectType.CrystalCluster =>
                     new CrystalCluster(placement.PixelPosition, world,
                         (CrystalCluster.Variant)placement.Variant),
+
+                ObjectType.CrystalBridge =>
+                    new CrystalBridge(placement.PixelPosition, world,
+                        placement.GrowDirection, placement.SegmentCount, placement.Variant),
 
                 // ── Controllable entities ──────────────────────────────────────
                 ObjectType.EchoBat when _inputManager != null && _camera != null =>

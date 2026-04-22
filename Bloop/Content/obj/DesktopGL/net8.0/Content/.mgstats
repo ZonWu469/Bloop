@@ -1,1 +1,4 @@
 Source File,Dest File,Processor Type,Content Type,Source File Size,Dest File Size,Build Seconds
+"C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/GameFont.spritefont","C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/bin/DesktopGL/Content/Fonts/GameFont.xnb","FontDescriptionProcessor","SpriteFontContent",517,21530,0,0212271
+"C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/MenuFont.spritefont","C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/bin/DesktopGL/Content/Fonts/MenuFont.xnb","FontDescriptionProcessor","SpriteFontContent",517,70682,0,2614889
+"C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Shaders/LightingEffect.fx","C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/bin/DesktopGL/Content/Shaders/LightingEffect.xnb","EffectProcessor","CompiledEffectContent",2786,898,0,3176487

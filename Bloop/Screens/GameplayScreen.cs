@@ -368,6 +368,13 @@ namespace Bloop.Screens
             float exitDist = Vector2.Distance(_player.PixelPosition, _level.ExitPoint);
             if (exitDist < 40f && _level.IsExitUnlocked)
             {
+                // Level 30 is the final level — victory!
+                if (Depth >= 30)
+                {
+                    ScreenManager.Replace(new GameOverScreen(Seed, Depth, "You escaped the caves!"));
+                    return;
+                }
+
                 // Auto-save and advance to next depth
                 SaveGame();
                 Depth++;
@@ -593,7 +600,16 @@ namespace Bloop.Screens
 
             // Entity selection range circle (world space, drawn over player)
             if (_entityControl != null && _entityControl.IsSelecting && _player != null)
-                EntityRenderer.DrawSelectionRangeCircle(spriteBatch, assets, _player.PixelPosition);
+                EntityRenderer.DrawSelectionRangeCircle(spriteBatch, assets, _player.PixelPosition, 200f);
+
+            // Skill effect range circle around controlled entity (world space)
+            if (_entityControl != null && (_entityControl.IsControlling || _entityControl.IsIsopodAttached)
+                && _entityControl.ActiveEntity != null)
+            {
+                var e = _entityControl.ActiveEntity;
+                EntityRenderer.DrawSkillRangeCircle(spriteBatch, assets,
+                    e.PixelPosition, e.GetEffectRadius());
+            }
 
             // Physics debug overlay (F1)
             _debugDraw.Draw(spriteBatch, _physics!.World, assets, _camera.GetVisibleBounds());

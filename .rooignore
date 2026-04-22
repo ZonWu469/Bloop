@@ -1,0 +1,105 @@
+# =============================================
+# .rooignore for MonoGame / C# / Visual Studio 2022
+# =============================================
+
+# ----- Build outputs -----
+bin/
+obj/
+out/
+*.user
+*.suo
+
+# ----- Visual Studio cache & metadata -----
+.vs/
+*.VC.db
+*.VC.VC.opendb
+*.aps
+*.ncb
+*.opendb
+*.sdf
+ipch/
+x64/
+x86/
+[Dd]ebug/
+[Rr]elease/
+[Pp]ublish/
+
+# ----- NuGet packages -----
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ----- MonoGame content pipeline -----
+# Compiled/processed assets — only source assets matter for context
+Content/bin/
+Content/obj/
+*.xnb
+*.mgcb.lock
+
+# ----- Large binary/media assets -----
+# Source art, audio, video — rarely useful as AI context
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tga
+*.psd
+*.gif
+*.ico
+*.wav
+*.mp3
+*.ogg
+*.wma
+*.flac
+*.aiff
+*.mp4
+*.avi
+*.mov
+*.ttf
+*.otf
+*.spritefont
+
+# ----- Compiled / generated -----
+*.dll
+*.exe
+*.pdb
+*.mdb
+*.ilk
+*.exp
+*.lib
+*.cache
+*.tmp
+*.temp
+
+# ----- Logs & diagnostics -----
+*.log
+*.log.*
+logs/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# ----- ReSharper -----
+_ReSharper*/
+*.DotSettings.user
+
+# ----- Rider (if ever used alongside VS) -----
+.idea/
+
+# ----- OS junk -----
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ----- Secrets & environment -----
+.env
+.env.*
+*.pfx
+*.p12
+secrets.json
+appsettings.Development.json

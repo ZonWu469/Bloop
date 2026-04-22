@@ -49,8 +49,9 @@ namespace Bloop.UI
         private static readonly Color EntityNameColor     = new Color(200, 240, 255, 220);
         private static readonly Color SkillNameColor      = new Color(255, 220, 100, 200);
         private static readonly Color PromptColor         = new Color(200, 200, 200, 180);
-        private static readonly Color IsopodIconColor     = new Color(80, 200, 240, 220);
-        private static readonly Color SelectingColor      = new Color(180, 255, 180, 200);
+        private static readonly Color IsopodIconColor        = new Color(80, 200, 240, 220);
+        private static readonly Color SelectingColor         = new Color(180, 255, 180, 200);
+        private static readonly Color SkillDescriptionColor  = new Color(200, 200, 200, 180);
 
         // Awareness indicator colors
         private static readonly Color ArrowControllableColor = new Color(80, 220, 255, 200);  // cyan
@@ -138,6 +139,17 @@ namespace Bloop.UI
                 string timerText = $"{_controlSystem.CooldownTimer:F0}s";
                 assets.DrawStringCentered(sb, timerText, cy + 8f,
                     new Color(180, 180, 180, 180), 0.6f);
+            }
+
+            // Skill description above Q button (shown while controlling)
+            if (_controlSystem.IsControlling || _controlSystem.IsIsopodAttached)
+            {
+                var skill = _controlSystem.ActiveEntity?.Skill;
+                if (skill != null && !string.IsNullOrEmpty(skill.Description))
+                {
+                    assets.DrawStringCentered(sb, skill.Description,
+                        (ButtonCenterY - 40f) * scaleY, SkillDescriptionColor, 0.65f);
+                }
             }
 
             // "Selecting" indicator

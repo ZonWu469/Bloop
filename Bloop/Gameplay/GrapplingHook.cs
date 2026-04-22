@@ -391,9 +391,10 @@ namespace Bloop.Gameplay
             if (!_isFlying) return false;
             if (_ownerPlayer == null) return false;
 
-            // Only anchor to terrain/climbable
+            // Only anchor to terrain, climbable surfaces, and crystal bridge segments
             if (other.CollisionCategories != Bloop.Physics.CollisionCategories.Terrain &&
-                other.CollisionCategories != Bloop.Physics.CollisionCategories.Climbable)
+                other.CollisionCategories != Bloop.Physics.CollisionCategories.Climbable &&
+                other.CollisionCategories != Bloop.Physics.CollisionCategories.CrystalBridge)
                 return true;
 
             // Stop the hook; defer body/joint creation until after World.Step() completes

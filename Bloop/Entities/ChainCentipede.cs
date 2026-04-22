@@ -223,7 +223,7 @@ namespace Bloop.Entities
     {
         private readonly ChainCentipede _centipede;
         public AggressionPheromoneSkill(ChainCentipede c)
-            : base("Aggression Pheromone", SkillActivationType.Instant, cooldown: 0f) => _centipede = c;
+            : base("Aggression Pheromone", "Pheromone drives different creatures to flee", SkillActivationType.Instant, cooldown: 0f) => _centipede = c;
         protected override void OnActivate(float power) => _centipede.TriggerPulse();
     }
 }

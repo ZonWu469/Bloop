@@ -413,7 +413,7 @@ namespace Bloop.Entities
         private readonly EchoBat _bat;
 
         public SonicPulseSkill(EchoBat bat)
-            : base("Sonic Pulse", SkillActivationType.Instant, cooldown: 3f)
+            : base("Sonic Pulse", "Pulse rallies nearby bats, disorients other creatures", SkillActivationType.Instant, cooldown: 3f)
         {
             _bat = bat;
         }

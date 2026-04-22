@@ -12,47 +12,47 @@ namespace Bloop.Rendering
     ///
     /// Each entity type has a dedicated DrawXxx() method.
     /// Shared helpers draw the control highlight, selection highlight, timer bar,
-    /// and the selection-mode range circle (drawn in world space).
+    /// effect state overlays, and the selection-mode range circle (drawn in world space).
     /// </summary>
     public static class EntityRenderer
     {
         // ── Shared colors ──────────────────────────────────────────────────────
-        private static readonly Color ControlHighlightColor  = new Color(80, 220, 255, 200);
+        private static readonly Color ControlHighlightColor   = new Color(80, 220, 255, 200);
         private static readonly Color SelectionHighlightColor = new Color(255, 220, 60, 180);
-        private static readonly Color InRangeHighlightColor  = new Color(180, 255, 180, 120);
-        private static readonly Color TimerBarBg             = new Color(30, 30, 30, 180);
-        private static readonly Color TimerBarFg             = new Color(80, 220, 255, 220);
-        private static readonly Color SkillReadyColor        = new Color(255, 200, 60, 220);
-        private static readonly Color SkillCooldownColor     = new Color(100, 100, 100, 180);
-        private static readonly Color RangeCircleColor       = new Color(180, 255, 180, 60);
-        private static readonly Color DangerAuraColor        = new Color(255, 80, 40, 60);
-        private static readonly Color DangerSparkColor       = new Color(255, 120, 60);
+        private static readonly Color InRangeHighlightColor   = new Color(180, 255, 180, 120);
+        private static readonly Color TimerBarBg              = new Color(30, 30, 30, 180);
+        private static readonly Color TimerBarFg              = new Color(80, 220, 255, 220);
+        private static readonly Color SkillReadyColor         = new Color(255, 200, 60, 220);
+        private static readonly Color SkillCooldownColor      = new Color(100, 100, 100, 180);
+        private static readonly Color RangeCircleColor        = new Color(180, 255, 180, 60);
+        private static readonly Color SkillRangeCircleColor   = new Color(255, 200, 60, 50);
+        private static readonly Color DangerAuraColor         = new Color(255, 80, 40, 60);
+        private static readonly Color DangerSparkColor        = new Color(255, 120, 60);
 
-        // ── Player position for danger proximity scaling (set each frame by GameplayScreen) ──
+        // ── Player position for danger proximity scaling ───────────────────────
         /// <summary>
         /// Set this each frame before drawing entities so danger indicators can
         /// scale their intensity based on distance to the player.
         /// </summary>
         public static Vector2 PlayerPositionForDanger { get; set; } = Vector2.Zero;
 
-        // ── Echo Bat ───────────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Echo Bat ──────────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         /// <summary>
-        /// Draw an Echo Bat at its current position.
-        /// Body: small dark ellipse. Wings: two angular triangles that flap.
+        /// Draw an Echo Bat. Body: small dark ellipse with pointed ears.
+        /// Wings: two angular triangles that flap. Fanged mouth when idle.
         /// Pulse ring: expanding circle when Sonic Pulse fires.
         /// </summary>
         public static void DrawEchoBat(SpriteBatch sb, AssetManager assets, EchoBat bat)
         {
             Vector2 pos = bat.PixelPosition;
 
-            // ── Danger indicator (hostile when idle) ───────────────────────────
             DrawDangerIndicator(sb, assets, bat, EchoBat.WidthPx, EchoBat.HeightPx);
-
-            // ── Selection / control highlights ─────────────────────────────────
             DrawEntityHighlight(sb, assets, bat, EchoBat.WidthPx, EchoBat.HeightPx);
 
-            // ── Pulse ring ─────────────────────────────────────────────────────
+            // Pulse ring
             if (bat.PulseActive && bat.PulseRadius > 0f)
             {
                 float alpha = 1f - bat.PulseRadius / EchoBat.PulseMaxRadius;
@@ -60,58 +60,53 @@ namespace Bloop.Rendering
                 GeometryBatch.DrawCircleOutline(sb, assets, pos, bat.PulseRadius, pulseColor, 2);
             }
 
-            // ── Wings ──────────────────────────────────────────────────────────
-            // Wing flap: phase 0 = fully open, 0.5 = folded
+            // Wings
             float flapAngle = (float)Math.Sin(bat.WingPhase * Math.PI * 2.0) * 0.4f;
             float wingSpan  = EchoBat.WidthPx * 0.9f;
             float wingDrop  = EchoBat.HeightPx * 0.3f + flapAngle * EchoBat.HeightPx * 0.5f;
-
-            // Left wing tip
             var wingTipL = new Vector2(pos.X - wingSpan, pos.Y + wingDrop);
-            // Right wing tip
             var wingTipR = new Vector2(pos.X + wingSpan, pos.Y + wingDrop);
-            // Wing root (body center)
-            var wingRoot = pos;
+            var wingColor = bat.IsControlled ? new Color(60, 100, 160) : new Color(40, 40, 60);
 
-            var wingColor = bat.IsControlled
-                ? new Color(60, 100, 160)
-                : new Color(40, 40, 60);
-
-            // Left wing: triangle from root to tip to body-left
             GeometryBatch.DrawTriangleSolid(sb, assets,
-                wingRoot,
-                wingTipL,
-                new Vector2(pos.X - EchoBat.WidthPx * 0.4f, pos.Y),
-                wingColor);
-
-            // Right wing: triangle from root to tip to body-right
+                pos, wingTipL, new Vector2(pos.X - EchoBat.WidthPx * 0.4f, pos.Y), wingColor);
             GeometryBatch.DrawTriangleSolid(sb, assets,
-                wingRoot,
-                wingTipR,
-                new Vector2(pos.X + EchoBat.WidthPx * 0.4f, pos.Y),
-                wingColor);
+                pos, wingTipR, new Vector2(pos.X + EchoBat.WidthPx * 0.4f, pos.Y), wingColor);
 
-            // ── Body ───────────────────────────────────────────────────────────
-            var bodyColor = bat.IsControlled
-                ? new Color(80, 130, 200)
-                : new Color(50, 50, 70);
+            // Body
+            var bodyColor = bat.IsControlled ? new Color(80, 130, 200) : new Color(50, 50, 70);
+            GeometryBatch.DrawCircleApprox(sb, assets, pos, EchoBat.WidthPx * 0.35f, bodyColor, 8);
 
-            GeometryBatch.DrawCircleApprox(sb, assets, pos,
-                EchoBat.WidthPx * 0.35f, bodyColor, 8);
+            // Pointed ears (two small triangles on top of head)
+            var earColor = bat.IsControlled ? new Color(100, 150, 220) : new Color(60, 60, 80);
+            float earOff = EchoBat.WidthPx * 0.18f;
+            float earH   = EchoBat.HeightPx * 0.7f;
+            float earBaseY = pos.Y - EchoBat.HeightPx * 0.3f;
+            GeometryBatch.DrawTriangleSolid(sb, assets,
+                new Vector2(pos.X - earOff - 2f, earBaseY),
+                new Vector2(pos.X - earOff + 2f, earBaseY),
+                new Vector2(pos.X - earOff, earBaseY - earH), earColor);
+            GeometryBatch.DrawTriangleSolid(sb, assets,
+                new Vector2(pos.X + earOff - 2f, earBaseY),
+                new Vector2(pos.X + earOff + 2f, earBaseY),
+                new Vector2(pos.X + earOff, earBaseY - earH), earColor);
 
-            // ── Eyes (two tiny bright dots) ────────────────────────────────────
-            var eyeColor = bat.IsControlled
-                ? new Color(200, 240, 255)
-                : new Color(180, 60, 60);
-
+            // Eyes
+            var eyeColor = bat.IsControlled ? new Color(200, 240, 255) : new Color(180, 60, 60);
             float eyeOff = EchoBat.WidthPx * 0.12f;
-            GeometryBatch.DrawCircleApprox(sb, assets,
-                new Vector2(pos.X - eyeOff, pos.Y - 1f), 1.5f, eyeColor, 4);
-            GeometryBatch.DrawCircleApprox(sb, assets,
-                new Vector2(pos.X + eyeOff, pos.Y - 1f), 1.5f, eyeColor, 4);
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X - eyeOff, pos.Y - 1f), 1.5f, eyeColor, 4);
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X + eyeOff, pos.Y - 1f), 1.5f, eyeColor, 4);
 
-            // ── Echolocation arcs (Task 13.4 — ambient visual sound) ───────────
-            // Draw 2-3 concentric arcs from head when idle, suggesting sonar pings
+            // Fanged mouth (V-shape below body, idle only)
+            if (!bat.IsControlled)
+            {
+                var fangColor = new Color(200, 80, 80, 160);
+                float mouthY = pos.Y + EchoBat.HeightPx * 0.3f;
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 2f, mouthY), new Vector2(pos.X, mouthY + 2f), fangColor, 1f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 2f, mouthY), new Vector2(pos.X, mouthY + 2f), fangColor, 1f);
+            }
+
+            // Ambient aura: echolocation arcs (idle only)
             if (!bat.IsControlled)
             {
                 float t = AnimationClock.Time;
@@ -119,11 +114,10 @@ namespace Bloop.Rendering
                 {
                     float arcPhase = (t * 0.8f + arc * 0.4f) % 1f;
                     float arcR     = 8f + arcPhase * 28f;
-                    float arcAlpha = (1f - arcPhase) * 0.35f;
+                    float arcAlpha = (1f - arcPhase) * 0.22f;
                     if (arcAlpha > 0.02f)
                     {
                         var arcColor = new Color(140, 200, 255, (int)(arcAlpha * 255));
-                        // Draw a partial arc (front-facing semicircle)
                         int arcSegs = 8;
                         for (int s = 0; s < arcSegs; s++)
                         {
@@ -137,16 +131,18 @@ namespace Bloop.Rendering
                 }
             }
 
-            // ── Control timer bar ──────────────────────────────────────────────
-            if (bat.IsControlled)
-                DrawControlTimerBar(sb, assets, bat, EchoBat.WidthPx);
+            DrawEffectState(sb, assets, bat, EchoBat.WidthPx, EchoBat.HeightPx);
 
-            // ── Skill cooldown pip ─────────────────────────────────────────────
-            if (bat.IsControlled && bat.Skill != null)
+            if (bat.IsControlled)
+            {
+                DrawControlTimerBar(sb, assets, bat, EchoBat.WidthPx);
                 DrawSkillCooldownPip(sb, assets, bat, EchoBat.WidthPx);
+            }
         }
 
-        // ── Silk Weaver Spider ─────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Silk Weaver Spider ────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawSilkWeaverSpider(SpriteBatch sb, AssetManager assets,
             SilkWeaverSpider spider)
@@ -155,41 +151,68 @@ namespace Bloop.Rendering
             DrawDangerIndicator(sb, assets, spider, SilkWeaverSpider.WidthPx, SilkWeaverSpider.HeightPx);
             DrawEntityHighlight(sb, assets, spider, SilkWeaverSpider.WidthPx, SilkWeaverSpider.HeightPx);
 
-            var bodyColor = spider.IsControlled
-                ? new Color(160, 100, 200)
-                : new Color(80, 50, 100);
-            var legColor = spider.IsControlled
-                ? new Color(130, 80, 170)
-                : new Color(60, 40, 80);
+            var bodyColor = spider.IsControlled ? new Color(160, 100, 200) : new Color(80, 50, 100);
+            var legColor  = spider.IsControlled ? new Color(130, 80, 170)  : new Color(60, 40, 80);
 
-            // 8 legs — 4 per side, angled outward
+            // 8 two-segment legs with knee joints
             for (int i = 0; i < 4; i++)
             {
-                float t     = (i / 3f) * 0.8f + 0.1f; // 0.1 to 0.9
-                float legY  = pos.Y - SilkWeaverSpider.HeightPx * 0.3f + t * SilkWeaverSpider.HeightPx * 0.6f;
-                float legXL = pos.X - SilkWeaverSpider.WidthPx * 0.5f;
-                float legXR = pos.X + SilkWeaverSpider.WidthPx * 0.5f;
-                float tipOff = SilkWeaverSpider.WidthPx * 0.7f;
-                float tipY   = legY + SilkWeaverSpider.HeightPx * 0.4f;
+                float t      = (i / 3f) * 0.8f + 0.1f;
+                float legY   = pos.Y - SilkWeaverSpider.HeightPx * 0.3f + t * SilkWeaverSpider.HeightPx * 0.6f;
+                float legXL  = pos.X - SilkWeaverSpider.WidthPx * 0.45f;
+                float legXR  = pos.X + SilkWeaverSpider.WidthPx * 0.45f;
+                float kneeOff = SilkWeaverSpider.WidthPx * 0.5f;
+                float tipOff  = SilkWeaverSpider.WidthPx * 0.75f;
+                float tipY    = legY + SilkWeaverSpider.HeightPx * 0.5f;
+                float kneeY   = legY + SilkWeaverSpider.HeightPx * 0.2f;
 
-                GeometryBatch.DrawLine(sb, assets, new Vector2(legXL, legY),
-                    new Vector2(legXL - tipOff, tipY), legColor, 1);
-                GeometryBatch.DrawLine(sb, assets, new Vector2(legXR, legY),
-                    new Vector2(legXR + tipOff, tipY), legColor, 1);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(legXL, legY), new Vector2(legXL - kneeOff, kneeY), legColor, 1);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(legXL - kneeOff, kneeY), new Vector2(legXL - tipOff, tipY), legColor, 1);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(legXR, legY), new Vector2(legXR + kneeOff, kneeY), legColor, 1);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(legXR + kneeOff, kneeY), new Vector2(legXR + tipOff, tipY), legColor, 1);
             }
 
-            // Round body
-            GeometryBatch.DrawCircleApprox(sb, assets, pos,
-                SilkWeaverSpider.WidthPx * 0.4f, bodyColor, 10);
+            // Diamond-shaped cephalothorax
+            GeometryBatch.DrawDiamond(sb, assets, pos, SilkWeaverSpider.WidthPx * 0.22f, bodyColor);
 
-            // Abdomen (slightly behind)
+            // Round abdomen (below)
             GeometryBatch.DrawCircleApprox(sb, assets,
-                new Vector2(pos.X, pos.Y + SilkWeaverSpider.HeightPx * 0.35f),
-                SilkWeaverSpider.WidthPx * 0.3f, bodyColor, 8);
+                new Vector2(pos.X, pos.Y + SilkWeaverSpider.HeightPx * 0.4f),
+                SilkWeaverSpider.WidthPx * 0.32f, bodyColor, 8);
+
+            // Fangs (two small downward lines from head)
+            var fangColor = spider.IsControlled ? new Color(200, 140, 255) : new Color(120, 60, 140);
+            float fangY = pos.Y - SilkWeaverSpider.HeightPx * 0.15f;
+            GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 3f, fangY), new Vector2(pos.X - 4f, fangY + 4f), fangColor, 1.5f);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 3f, fangY), new Vector2(pos.X + 4f, fangY + 4f), fangColor, 1.5f);
+
+            // Spinnerets (two tiny dots at rear)
+            var spinnColor = new Color(bodyColor.R, bodyColor.G, bodyColor.B, (byte)180);
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X - 2f, pos.Y + SilkWeaverSpider.HeightPx * 0.7f), 1.5f, spinnColor, 4);
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X + 2f, pos.Y + SilkWeaverSpider.HeightPx * 0.7f), 1.5f, spinnColor, 4);
+
+            // Ambient aura: drifting silk dots
+            {
+                float t = AnimationClock.Time;
+                for (int d = 0; d < 4; d++)
+                {
+                    float dPhase = (t * 0.4f + d * 0.25f) % 1f;
+                    float dAlpha = MathF.Sin(dPhase * MathF.PI) * 0.22f;
+                    if (dAlpha > 0.02f)
+                    {
+                        float dx = pos.X + MathF.Sin(t * 0.7f + d * 1.5f) * SilkWeaverSpider.WidthPx * 0.6f;
+                        float dy = pos.Y + SilkWeaverSpider.HeightPx * 0.5f + dPhase * 10f;
+                        GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(dx, dy), 1f,
+                            new Color(200, 200, 255, (int)(dAlpha * 255)), 4);
+                    }
+                }
+            }
 
             // Web trail (if skill active)
             if (spider.IsControlled && spider.Skill is { IsActive: true })
                 DrawWebTrail(sb, assets, spider);
+
+            DrawEffectState(sb, assets, spider, SilkWeaverSpider.WidthPx, SilkWeaverSpider.HeightPx);
 
             if (spider.IsControlled)
             {
@@ -198,7 +221,9 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Chain Centipede ────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Chain Centipede ───────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawChainCentipede(SpriteBatch sb, AssetManager assets,
             ChainCentipede centipede)
@@ -207,37 +232,35 @@ namespace Bloop.Rendering
             DrawDangerIndicator(sb, assets, centipede, ChainCentipede.WidthPx, ChainCentipede.HeightPx);
             DrawEntityHighlight(sb, assets, centipede, ChainCentipede.WidthPx, ChainCentipede.HeightPx);
 
-            var segColor = centipede.IsControlled
-                ? new Color(220, 140, 60)
-                : new Color(140, 90, 40);
-            var legColor = centipede.IsControlled
-                ? new Color(200, 120, 40)
-                : new Color(120, 70, 30);
+            var segColor = centipede.IsControlled ? new Color(220, 140, 60) : new Color(140, 90, 40);
+            var legColor = centipede.IsControlled ? new Color(200, 120, 40) : new Color(120, 70, 30);
 
-            // 7 body segments
+            // 7 alternating-size body segments
             int segments = 7;
             float segW = ChainCentipede.WidthPx / segments;
             for (int i = 0; i < segments; i++)
             {
                 float sx = pos.X - ChainCentipede.WidthPx * 0.5f + segW * (i + 0.5f);
-                float sy = pos.Y;
-                GeometryBatch.DrawCircleApprox(sb, assets,
-                    new Vector2(sx, sy), segW * 0.45f, segColor, 6);
+                float segRadius = (i % 2 == 0) ? segW * 0.48f : segW * 0.36f;
+                GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(sx, pos.Y), segRadius, segColor, 6);
 
-                // Tiny legs
-                float legLen = ChainCentipede.HeightPx * 0.6f;
-                GeometryBatch.DrawLine(sb, assets,
-                    new Vector2(sx, sy),
-                    new Vector2(sx - 2f, sy - legLen), legColor, 1);
-                GeometryBatch.DrawLine(sb, assets,
-                    new Vector2(sx, sy),
-                    new Vector2(sx - 2f, sy + legLen), legColor, 1);
+                float legLen = ChainCentipede.HeightPx * 0.7f;
+                GeometryBatch.DrawLine(sb, assets, new Vector2(sx, pos.Y), new Vector2(sx - 2f, pos.Y - legLen), legColor, 1);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(sx, pos.Y), new Vector2(sx - 2f, pos.Y + legLen), legColor, 1);
             }
 
-            // Head (slightly larger)
-            GeometryBatch.DrawCircleApprox(sb, assets,
-                new Vector2(pos.X + ChainCentipede.WidthPx * 0.5f, pos.Y),
-                segW * 0.6f, segColor, 6);
+            // Head (larger, with mandibles)
+            float headX = pos.X + ChainCentipede.WidthPx * 0.5f;
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(headX, pos.Y), segW * 0.65f, segColor, 6);
+
+            var mandibleColor = centipede.IsControlled ? new Color(255, 180, 80) : new Color(160, 100, 40);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX + segW * 0.5f, pos.Y), new Vector2(headX + segW * 0.9f, pos.Y - 3f), mandibleColor, 1.5f);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX + segW * 0.5f, pos.Y), new Vector2(headX + segW * 0.9f, pos.Y + 3f), mandibleColor, 1.5f);
+
+            // Antennae
+            var antennaColor = new Color(legColor.R, legColor.G, legColor.B, (byte)180);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX + segW * 0.4f, pos.Y - 2f), new Vector2(headX + segW * 1.2f, pos.Y - 6f), antennaColor, 1f);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX + segW * 0.4f, pos.Y + 2f), new Vector2(headX + segW * 1.2f, pos.Y + 6f), antennaColor, 1f);
 
             // Aggression pheromone pulse
             if (centipede.PulseActive)
@@ -247,27 +270,27 @@ namespace Bloop.Rendering
                 GeometryBatch.DrawCircleOutline(sb, assets, pos, centipede.PulseRadius, pulseColor, 2);
             }
 
-            // ── Vibration lines (Task 13.4 — ambient visual sound) ─────────────
-            // Tiny horizontal vibration streaks when moving, suggesting chittering
+            // Ambient aura: heat shimmer lines above (idle only)
             if (!centipede.IsControlled)
             {
                 float t = AnimationClock.Time;
-                for (int v = 0; v < 4; v++)
+                for (int v = 0; v < 3; v++)
                 {
-                    float vPhase = (t * 3f + v * 0.25f) % 1f;
-                    float vAlpha = MathF.Sin(vPhase * MathF.PI) * 0.3f;
+                    float vPhase = (t * 2f + v * 0.33f) % 1f;
+                    float vAlpha = MathF.Sin(vPhase * MathF.PI) * 0.18f;
                     if (vAlpha > 0.02f)
                     {
-                        float vx = pos.X - ChainCentipede.WidthPx * 0.4f + v * (ChainCentipede.WidthPx * 0.25f);
-                        float vy = pos.Y + ChainCentipede.HeightPx * 0.8f;
-                        float vLen = 3f + MathF.Sin(t * 8f + v) * 1.5f;
+                        float vx = pos.X - ChainCentipede.WidthPx * 0.3f + v * (ChainCentipede.WidthPx * 0.3f);
+                        float vy = pos.Y - ChainCentipede.HeightPx * 0.5f - vPhase * 8f;
+                        float vLen = 2f + MathF.Sin(t * 5f + v) * 1f;
                         GeometryBatch.DrawLine(sb, assets,
-                            new Vector2(vx - vLen, vy),
-                            new Vector2(vx + vLen, vy),
-                            new Color(200, 140, 60, (int)(vAlpha * 255)), 1f);
+                            new Vector2(vx - vLen, vy), new Vector2(vx + vLen, vy),
+                            new Color(220, 160, 80, (int)(vAlpha * 255)), 1f);
                     }
                 }
             }
+
+            DrawEffectState(sb, assets, centipede, ChainCentipede.WidthPx, ChainCentipede.HeightPx);
 
             if (centipede.IsControlled)
             {
@@ -276,7 +299,9 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Luminescent Glowworm ───────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Luminescent Glowworm ──────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawLuminescentGlowworm(SpriteBatch sb, AssetManager assets,
             LuminescentGlowworm worm)
@@ -284,25 +309,33 @@ namespace Bloop.Rendering
             Vector2 pos = worm.PixelPosition;
             DrawEntityHighlight(sb, assets, worm, LuminescentGlowworm.WidthPx, LuminescentGlowworm.HeightPx);
 
-            // Glow aura
+            // Subtle glow aura
             float glowPulse = 0.7f + 0.3f * (float)Math.Sin(AnimationClock.Pulse(2f));
-            var glowColor = new Color(180, 255, 120, (int)(60 * glowPulse));
-            GeometryBatch.DrawCircleApprox(sb, assets, pos,
-                LuminescentGlowworm.WidthPx * 1.2f, glowColor, 12);
+            var glowColor = new Color(180, 255, 120, (int)(32 * glowPulse));
+            GeometryBatch.DrawCircleApprox(sb, assets, pos, LuminescentGlowworm.WidthPx * 1.1f, glowColor, 12);
 
-            var bodyColor = worm.IsControlled
-                ? new Color(160, 255, 100)
-                : new Color(100, 200, 60);
+            var bodyColor = worm.IsControlled ? new Color(160, 255, 100) : new Color(100, 200, 60);
 
-            // Segmented body (5 segments)
+            // Elongated oval body — 5 tapering segments (distinct from centipede)
             int segs = 5;
             float segW = LuminescentGlowworm.WidthPx / segs;
             for (int i = 0; i < segs; i++)
             {
                 float sx = pos.X - LuminescentGlowworm.WidthPx * 0.5f + segW * (i + 0.5f);
-                GeometryBatch.DrawCircleApprox(sb, assets,
-                    new Vector2(sx, pos.Y), segW * 0.45f, bodyColor, 6);
+                float taper = (i == 0 || i == segs - 1) ? 0.35f : 0.45f;
+                GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(sx, pos.Y), segW * taper, bodyColor, 8);
             }
+
+            // Glowing tail tip (brighter last segment)
+            float tailX = pos.X - LuminescentGlowworm.WidthPx * 0.5f + segW * 0.5f;
+            var tailColor = worm.IsControlled ? new Color(220, 255, 160, 200) : new Color(160, 255, 80, 180);
+            GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(tailX, pos.Y), segW * 0.4f, tailColor, 8);
+
+            // Tiny antennae at head
+            float headX = pos.X + LuminescentGlowworm.WidthPx * 0.5f - segW * 0.5f;
+            var antennaColor = new Color(bodyColor.R, bodyColor.G, bodyColor.B, (byte)160);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX, pos.Y - 2f), new Vector2(headX + 3f, pos.Y - 5f), antennaColor, 1f);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(headX, pos.Y - 2f), new Vector2(headX + 4f, pos.Y - 3f), antennaColor, 1f);
 
             // Flash effect
             if (worm.FlashActive)
@@ -312,20 +345,21 @@ namespace Bloop.Rendering
                 GeometryBatch.DrawCircleApprox(sb, assets, pos, worm.FlashRadius, flashColor, 16);
             }
 
-            // ── Synchronized pulse rings (Task 13.4 — ambient visual sound) ────
-            // Gentle expanding rings synchronized via SyncPhase across nearby glowworms
+            // Ambient aura: synchronized pulse rings (idle only)
             if (!worm.IsControlled)
             {
                 float t = AnimationClock.Time;
                 float syncT = (t * 0.5f + worm.SyncPhase / (MathF.PI * 2f)) % 1f;
-                float ringR  = syncT * 22f;
-                float ringA  = (1f - syncT) * 0.25f;
+                float ringR  = syncT * 18f;
+                float ringA  = (1f - syncT) * 0.16f;
                 if (ringA > 0.01f)
                 {
                     GeometryBatch.DrawCircleOutline(sb, assets, pos, ringR,
                         new Color(160, 255, 100, (int)(ringA * 255)), 8);
                 }
             }
+
+            DrawEffectState(sb, assets, worm, LuminescentGlowworm.WidthPx, LuminescentGlowworm.HeightPx);
 
             if (worm.IsControlled)
             {
@@ -334,7 +368,9 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Deep Burrow Worm ───────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Deep Burrow Worm ──────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawDeepBurrowWorm(SpriteBatch sb, AssetManager assets,
             DeepBurrowWorm worm)
@@ -345,31 +381,73 @@ namespace Bloop.Rendering
 
             if (worm.IsBurrowing)
             {
-                // Show only the tail end disappearing into the ground
                 var dirtColor = new Color(120, 80, 40, 180);
-                GeometryBatch.DrawCircleApprox(sb, assets, pos,
-                    DeepBurrowWorm.WidthPx * 0.6f, dirtColor, 8);
+                GeometryBatch.DrawCircleApprox(sb, assets, pos, DeepBurrowWorm.WidthPx * 0.6f, dirtColor, 8);
+                // Dust particles rising while burrowing
+                float t2 = AnimationClock.Time;
+                for (int d = 0; d < 3; d++)
+                {
+                    float dp = (t2 * 1.5f + d * 0.33f) % 1f;
+                    float da = MathF.Sin(dp * MathF.PI) * 0.3f;
+                    if (da > 0.02f)
+                    {
+                        float dx = pos.X + MathF.Sin(t2 * 2f + d) * 4f;
+                        float dy = pos.Y - dp * 12f;
+                        GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(dx, dy), 1.5f,
+                            new Color(160, 120, 60, (int)(da * 255)), 4);
+                    }
+                }
                 return;
             }
 
-            var bodyColor = worm.IsControlled
-                ? new Color(160, 120, 80)
-                : new Color(100, 70, 40);
+            var bodyColor = worm.IsControlled ? new Color(160, 120, 80) : new Color(100, 70, 40);
 
-            // Thick segmented body (vertical orientation)
+            // Tapering segmented body (vertical orientation, distinct from glowworm)
             int segs = 5;
             float segH = DeepBurrowWorm.HeightPx / segs;
             for (int i = 0; i < segs; i++)
             {
                 float sy = pos.Y - DeepBurrowWorm.HeightPx * 0.5f + segH * (i + 0.5f);
-                GeometryBatch.DrawCircleApprox(sb, assets,
-                    new Vector2(pos.X, sy), DeepBurrowWorm.WidthPx * 0.45f, bodyColor, 6);
+                float taper = 0.45f - i * 0.04f;
+                GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X, sy), DeepBurrowWorm.WidthPx * taper, bodyColor, 6);
+
+                // Ring markings between segments
+                if (i < segs - 1)
+                {
+                    float ringY = pos.Y - DeepBurrowWorm.HeightPx * 0.5f + segH * (i + 1f);
+                    var ringColor = new Color((int)(bodyColor.R * 0.7f), (int)(bodyColor.G * 0.7f), (int)(bodyColor.B * 0.7f), 180);
+                    GeometryBatch.DrawLine(sb, assets,
+                        new Vector2(pos.X - DeepBurrowWorm.WidthPx * 0.35f, ringY),
+                        new Vector2(pos.X + DeepBurrowWorm.WidthPx * 0.35f, ringY),
+                        ringColor, 1f);
+                }
             }
 
-            // Head (top, slightly larger)
-            GeometryBatch.DrawCircleApprox(sb, assets,
-                new Vector2(pos.X, pos.Y - DeepBurrowWorm.HeightPx * 0.5f),
-                DeepBurrowWorm.WidthPx * 0.55f, bodyColor, 8);
+            // Jaw mandibles at head (top)
+            float headY = pos.Y - DeepBurrowWorm.HeightPx * 0.5f;
+            var mandibleColor = worm.IsControlled ? new Color(200, 160, 100) : new Color(130, 90, 50);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 3f, headY), new Vector2(pos.X - 5f, headY - 5f), mandibleColor, 1.5f);
+            GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 3f, headY), new Vector2(pos.X + 5f, headY - 5f), mandibleColor, 1.5f);
+
+            // Ambient aura: dust motes rising (idle only)
+            if (!worm.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                for (int d = 0; d < 3; d++)
+                {
+                    float dp = (t * 0.6f + d * 0.33f) % 1f;
+                    float da = MathF.Sin(dp * MathF.PI) * 0.15f;
+                    if (da > 0.01f)
+                    {
+                        float dx = pos.X + MathF.Sin(t * 1.2f + d * 2.1f) * DeepBurrowWorm.WidthPx * 0.4f;
+                        float dy = pos.Y + DeepBurrowWorm.HeightPx * 0.5f - dp * 14f;
+                        GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(dx, dy), 1.2f,
+                            new Color(140, 100, 60, (int)(da * 255)), 4);
+                    }
+                }
+            }
+
+            DrawEffectState(sb, assets, worm, DeepBurrowWorm.WidthPx, DeepBurrowWorm.HeightPx);
 
             if (worm.IsControlled)
             {
@@ -378,56 +456,106 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Blind Cave Salamander ──────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Blind Cave Salamander ─────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawBlindCaveSalamander(SpriteBatch sb, AssetManager assets,
             BlindCaveSalamander salamander)
         {
             Vector2 pos = salamander.PixelPosition;
-            DrawEntityHighlight(sb, assets, salamander,
-                BlindCaveSalamander.WidthPx, BlindCaveSalamander.HeightPx);
+            DrawDangerIndicator(sb, assets, salamander, BlindCaveSalamander.WidthPx, BlindCaveSalamander.HeightPx);
+            DrawEntityHighlight(sb, assets, salamander, BlindCaveSalamander.WidthPx, BlindCaveSalamander.HeightPx);
 
-            var bodyColor = salamander.IsControlled
-                ? new Color(220, 200, 180)
-                : new Color(180, 160, 140);
-            var legColor = salamander.IsControlled
-                ? new Color(200, 180, 160)
-                : new Color(160, 140, 120);
+            var bodyColor = salamander.IsControlled ? new Color(80, 200, 160) : new Color(50, 130, 100);
+            var legColor  = salamander.IsControlled ? new Color(60, 170, 130) : new Color(40, 110, 80);
 
-            // 4 tiny legs
-            float legY = pos.Y + BlindCaveSalamander.HeightPx * 0.3f;
-            for (int i = 0; i < 4; i++)
-            {
-                float lx = pos.X - BlindCaveSalamander.WidthPx * 0.4f +
-                           (i / 3f) * BlindCaveSalamander.WidthPx * 0.8f;
-                GeometryBatch.DrawLine(sb, assets,
-                    new Vector2(lx, pos.Y),
-                    new Vector2(lx + (i % 2 == 0 ? -3f : 3f), legY), legColor, 1);
-            }
-
-            // Elongated body
-            {
-                int bw = (int)BlindCaveSalamander.WidthPx;
-                int bh = (int)(BlindCaveSalamander.HeightPx * 0.6f);
-                GeometryBatch.DrawRoundedRect(sb, assets,
-                    new Rectangle((int)pos.X - bw / 2, (int)pos.Y - bh / 2, bw, bh),
-                    4, bodyColor);
-            }
-
-            // Tail
+            // 4 stubby legs (wide stance, distinct from spider)
+            float legSpanX = BlindCaveSalamander.WidthPx * 0.38f;
+            float legSpanY = BlindCaveSalamander.HeightPx * 0.55f;
+            // Front legs
             GeometryBatch.DrawLine(sb, assets,
-                new Vector2(pos.X - BlindCaveSalamander.WidthPx * 0.5f, pos.Y),
-                new Vector2(pos.X - BlindCaveSalamander.WidthPx * 0.8f, pos.Y + 2f),
-                bodyColor, 2);
+                new Vector2(pos.X - legSpanX * 0.5f, pos.Y - BlindCaveSalamander.HeightPx * 0.1f),
+                new Vector2(pos.X - legSpanX, pos.Y + legSpanY), legColor, 2f);
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(pos.X + legSpanX * 0.5f, pos.Y - BlindCaveSalamander.HeightPx * 0.1f),
+                new Vector2(pos.X + legSpanX, pos.Y + legSpanY), legColor, 2f);
+            // Rear legs
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(pos.X - legSpanX * 0.4f, pos.Y + BlindCaveSalamander.HeightPx * 0.1f),
+                new Vector2(pos.X - legSpanX * 0.9f, pos.Y + legSpanY), legColor, 2f);
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(pos.X + legSpanX * 0.4f, pos.Y + BlindCaveSalamander.HeightPx * 0.1f),
+                new Vector2(pos.X + legSpanX * 0.9f, pos.Y + legSpanY), legColor, 2f);
 
-            // Slime trail (if skill active)
-            if (salamander.IsControlled && salamander.Skill is { IsActive: true })
+            // Wide flat body (rounded rect, landscape orientation)
+            GeometryBatch.DrawRoundedRect(sb, assets,
+                new Rectangle(
+                    (int)(pos.X - BlindCaveSalamander.WidthPx * 0.45f),
+                    (int)(pos.Y - BlindCaveSalamander.HeightPx * 0.22f),
+                    (int)(BlindCaveSalamander.WidthPx * 0.9f),
+                    (int)(BlindCaveSalamander.HeightPx * 0.44f)),
+                4, bodyColor);
+
+            // Wide flat head (distinct from body — wider, flatter)
+            float headW = BlindCaveSalamander.WidthPx * 0.38f;
+            float headH = BlindCaveSalamander.HeightPx * 0.28f;
+            float headX = pos.X + BlindCaveSalamander.WidthPx * 0.38f;
+            GeometryBatch.DrawRoundedRect(sb, assets,
+                new Rectangle(
+                    (int)(headX - headW * 0.5f),
+                    (int)(pos.Y - headH * 0.5f),
+                    (int)headW, (int)headH),
+                3, bodyColor);
+
+            // Gill fronds (3 feathery lines on each side of neck)
+            var gillColor = salamander.IsControlled ? new Color(120, 240, 180, 180) : new Color(80, 160, 120, 160);
+            float neckX = pos.X + BlindCaveSalamander.WidthPx * 0.2f;
+            for (int g = 0; g < 3; g++)
             {
-                var slimeColor = new Color(100, 200, 80, 120);
-                GeometryBatch.DrawCircleApprox(sb, assets,
-                    new Vector2(pos.X - BlindCaveSalamander.WidthPx * 0.5f, pos.Y),
-                    4f, slimeColor, 6);
+                float gOff = g * 3f;
+                float gLen = 5f - g * 1f;
+                GeometryBatch.DrawLine(sb, assets,
+                    new Vector2(neckX, pos.Y - BlindCaveSalamander.HeightPx * 0.18f + gOff),
+                    new Vector2(neckX + gLen, pos.Y - BlindCaveSalamander.HeightPx * 0.35f + gOff),
+                    gillColor, 1f);
+                GeometryBatch.DrawLine(sb, assets,
+                    new Vector2(neckX, pos.Y - BlindCaveSalamander.HeightPx * 0.18f + gOff),
+                    new Vector2(neckX - gLen, pos.Y - BlindCaveSalamander.HeightPx * 0.35f + gOff),
+                    gillColor, 1f);
             }
+
+            // Long tapering tail (to the left)
+            float tailStartX = pos.X - BlindCaveSalamander.WidthPx * 0.45f;
+            float tailEndX   = pos.X - BlindCaveSalamander.WidthPx * 0.85f;
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(tailStartX, pos.Y),
+                new Vector2(tailEndX, pos.Y + BlindCaveSalamander.HeightPx * 0.15f),
+                bodyColor, 2.5f);
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(tailEndX, pos.Y + BlindCaveSalamander.HeightPx * 0.15f),
+                new Vector2(tailEndX - 4f, pos.Y + BlindCaveSalamander.HeightPx * 0.25f),
+                bodyColor, 1.5f);
+
+            // Ambient aura: moisture droplets (idle only)
+            if (!salamander.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                for (int d = 0; d < 4; d++)
+                {
+                    float dp = (t * 0.7f + d * 0.25f) % 1f;
+                    float da = MathF.Sin(dp * MathF.PI) * 0.18f;
+                    if (da > 0.01f)
+                    {
+                        float dx = pos.X + MathF.Sin(t * 0.9f + d * 1.6f) * BlindCaveSalamander.WidthPx * 0.5f;
+                        float dy = pos.Y - BlindCaveSalamander.HeightPx * 0.3f - dp * 10f;
+                        GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(dx, dy), 1f,
+                            new Color(100, 220, 180, (int)(da * 255)), 4);
+                    }
+                }
+            }
+
+            DrawEffectState(sb, assets, salamander, BlindCaveSalamander.WidthPx, BlindCaveSalamander.HeightPx);
 
             if (salamander.IsControlled)
             {
@@ -436,7 +564,9 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Luminous Isopod ────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Luminous Isopod ───────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         public static void DrawLuminousIsopod(SpriteBatch sb, AssetManager assets,
             LuminousIsopod isopod)
@@ -444,53 +574,87 @@ namespace Bloop.Rendering
             Vector2 pos = isopod.PixelPosition;
             DrawEntityHighlight(sb, assets, isopod, LuminousIsopod.WidthPx, LuminousIsopod.HeightPx);
 
-            // Passive glow aura
-            float glowPulse = 0.6f + 0.4f * (float)Math.Sin(AnimationClock.Pulse(1.5f));
-            var glowColor = new Color(60, 180, 220, (int)(80 * glowPulse));
-            GeometryBatch.DrawCircleApprox(sb, assets, pos,
-                LuminousIsopod.WidthPx * 1.5f, glowColor, 12);
+            var bodyColor  = isopod.IsControlled ? new Color(80, 200, 220) : new Color(50, 130, 150);
+            var plateColor = isopod.IsControlled ? new Color(60, 170, 190) : new Color(40, 110, 130);
+            var legColor   = isopod.IsControlled ? new Color(50, 150, 170) : new Color(35, 100, 120);
 
-            var bodyColor = isopod.IsControlled
-                ? new Color(80, 200, 240)
-                : new Color(40, 140, 180);
-            var legColor = isopod.IsControlled
-                ? new Color(60, 170, 210)
-                : new Color(30, 110, 150);
-
-            // Many tiny legs (7 per side)
-            for (int i = 0; i < 7; i++)
+            // 7 pairs of tiny legs (isopod has many legs, distinct from salamander)
+            int legPairs = 7;
+            float legSpacing = LuminousIsopod.WidthPx / legPairs;
+            for (int i = 0; i < legPairs; i++)
             {
-                float lx = pos.X - LuminousIsopod.WidthPx * 0.45f +
-                           (i / 6f) * LuminousIsopod.WidthPx * 0.9f;
-                float legLen = LuminousIsopod.HeightPx * 0.5f;
+                float lx = pos.X - LuminousIsopod.WidthPx * 0.5f + legSpacing * (i + 0.5f);
+                float legLen = LuminousIsopod.HeightPx * 0.55f;
                 GeometryBatch.DrawLine(sb, assets,
                     new Vector2(lx, pos.Y),
-                    new Vector2(lx, pos.Y + legLen), legColor, 1);
+                    new Vector2(lx - 1f, pos.Y + legLen), legColor, 1f);
                 GeometryBatch.DrawLine(sb, assets,
                     new Vector2(lx, pos.Y),
-                    new Vector2(lx, pos.Y - legLen), legColor, 1);
+                    new Vector2(lx + 1f, pos.Y - legLen), legColor, 1f);
             }
 
-            // Oval segmented body
+            // Armored shell plates (5 overlapping rounded rects — distinct from salamander's smooth body)
+            int plates = 5;
+            float plateW = LuminousIsopod.WidthPx / plates;
+            for (int i = 0; i < plates; i++)
             {
-                int iw = (int)LuminousIsopod.WidthPx;
-                int ih = (int)(LuminousIsopod.HeightPx * 0.7f);
+                float px = pos.X - LuminousIsopod.WidthPx * 0.5f + plateW * i;
+                float plateH = LuminousIsopod.HeightPx * (0.7f - Math.Abs(i - plates / 2f) * 0.08f);
                 GeometryBatch.DrawRoundedRect(sb, assets,
-                    new Rectangle((int)pos.X - iw / 2, (int)pos.Y - ih / 2, iw, ih),
-                    3, bodyColor);
+                    new Rectangle(
+                        (int)px,
+                        (int)(pos.Y - plateH * 0.5f),
+                        (int)(plateW + 1f),
+                        (int)plateH),
+                    2, i % 2 == 0 ? bodyColor : plateColor);
             }
 
-            // Glow Surge pulse
+            // Antennae (two long, from head)
+            float isopodHeadX = pos.X + LuminousIsopod.WidthPx * 0.5f;
+            var antennaColor = new Color(bodyColor.R, bodyColor.G, bodyColor.B, (byte)180);
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(isopodHeadX, pos.Y - 2f),
+                new Vector2(isopodHeadX + LuminousIsopod.WidthPx * 0.4f, pos.Y - 6f),
+                antennaColor, 1f);
+            GeometryBatch.DrawLine(sb, assets,
+                new Vector2(isopodHeadX, pos.Y + 2f),
+                new Vector2(isopodHeadX + LuminousIsopod.WidthPx * 0.4f, pos.Y + 6f),
+                antennaColor, 1f);
+
+            // Tail fan (3 short lines at rear)
+            float isopodTailX = pos.X - LuminousIsopod.WidthPx * 0.5f;
+            var tailFanColor = new Color(plateColor.R, plateColor.G, plateColor.B, (byte)200);
+            for (int f = -1; f <= 1; f++)
+            {
+                GeometryBatch.DrawLine(sb, assets,
+                    new Vector2(isopodTailX, pos.Y + f * 2f),
+                    new Vector2(isopodTailX - 5f, pos.Y + f * 5f),
+                    tailFanColor, 1.5f);
+            }
+
+            // Glow surge effect
             if (isopod.GlowSurgeActive)
             {
-                float alpha = 1f - isopod.GlowSurgeRadius / LuminousIsopod.GlowSurgeMaxRadius;
-                var surgeColor = new Color(100, 220, 255, (int)(alpha * 180));
+                float surgeAlpha = 1f - isopod.GlowSurgeRadius / LuminousIsopod.GlowSurgeMaxRadius;
+                var surgeColor = new Color(100, 220, 255, (int)(surgeAlpha * 180));
                 GeometryBatch.DrawCircleOutline(sb, assets, pos, isopod.GlowSurgeRadius, surgeColor, 2);
             }
 
-            // Throw trajectory preview (when T is held)
-            if (isopod.IsControlled && isopod.ShowTrajectory)
+            // Ambient aura: shimmer (idle only)
+            if (!isopod.IsControlled)
+            {
+                float t = AnimationClock.Time;
+                float shimmerA = 0.08f + 0.06f * MathF.Sin(t * 3f);
+                GeometryBatch.DrawCircleApprox(sb, assets, pos,
+                    LuminousIsopod.WidthPx * 0.9f,
+                    new Color(80, 200, 220, (int)(shimmerA * 255)), 12);
+            }
+
+            // Trajectory preview when attached
+            if (isopod.ShowTrajectory)
                 DrawIsopodTrajectory(sb, assets, isopod);
+
+            DrawEffectState(sb, assets, isopod, LuminousIsopod.WidthPx, LuminousIsopod.HeightPx);
 
             if (isopod.IsControlled)
             {
@@ -499,211 +663,223 @@ namespace Bloop.Rendering
             }
         }
 
-        // ── Shared helpers ─────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // ── Shared helpers ────────────────────────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
 
         /// <summary>
-        /// Draw a pulsing danger aura and orbiting warning sparks around a hostile entity.
-        /// Only shown when the entity is not controlled. Intensity scales with proximity to player.
+        /// Draws a pulsing red aura around entities that are dangerous to the player.
+        /// Intensity scales with proximity.
         /// </summary>
-        public static void DrawDangerIndicator(SpriteBatch sb, AssetManager assets,
-            ControllableEntity entity, float widthPx, float heightPx)
+        private static void DrawDangerIndicator(SpriteBatch sb, AssetManager assets,
+            ControllableEntity entity, float w, float h)
         {
-            if (!entity.DamagesPlayerOnContact || entity.IsControlled) return;
+            if (entity.IsControlled) return;
 
+            float dist = Vector2.Distance(entity.PixelPosition, PlayerPositionForDanger);
+            float dangerRadius = 80f;
+            if (dist > dangerRadius) return;
+
+            float proximity = 1f - dist / dangerRadius;
+            float pulse = 0.5f + 0.5f * (float)Math.Sin(AnimationClock.Time * 4f);
+            float alpha = proximity * pulse * 0.35f;
+
+            GeometryBatch.DrawCircleApprox(sb, assets, entity.PixelPosition,
+                w * 0.8f + pulse * 4f,
+                new Color(255, 60, 30, (int)(alpha * 255)), 10);
+        }
+
+        /// <summary>
+        /// Draws a small icon or overlay indicating the entity's current effect state
+        /// (following, fleeing, stuck, disoriented, infighting).
+        /// </summary>
+        private static void DrawEffectState(SpriteBatch sb, AssetManager assets,
+            ControllableEntity entity, float w, float h)
+        {
             Vector2 pos = entity.PixelPosition;
+            float iconY = pos.Y - h * 0.5f - 10f;
             float t = AnimationClock.Time;
 
-            // Proximity-based intensity: full at 80px, zero at 200px
-            float dist = Vector2.Distance(pos, PlayerPositionForDanger);
-            float proximityFactor = MathHelper.Clamp(1f - (dist - 80f) / 120f, 0f, 1f);
-
-            // Pulsing aura radius
-            float pulse = 0.5f + 0.5f * (float)Math.Sin(t * 3.5f);
-            float auraRadius = Math.Max(widthPx, heightPx) * 0.8f + pulse * 4f;
-            float auraAlpha = (0.3f + pulse * 0.3f) * (0.4f + proximityFactor * 0.6f);
-
-            var auraColor = new Color(
-                DangerAuraColor.R,
-                DangerAuraColor.G,
-                DangerAuraColor.B,
-                (int)(DangerAuraColor.A * auraAlpha * 2f));
-            GeometryBatch.DrawCircleApprox(sb, assets, pos, auraRadius, auraColor, 10);
-
-            // Orbiting warning sparks (3 dots)
-            int sparkCount = 3;
-            for (int i = 0; i < sparkCount; i++)
+            if (entity.IsFollowing)
             {
-                float angle = t * 2.2f + i * (MathF.PI * 2f / sparkCount);
-                float orbitR = auraRadius + 3f;
-                var sparkPos = new Vector2(
-                    pos.X + MathF.Cos(angle) * orbitR,
-                    pos.Y + MathF.Sin(angle) * orbitR * 0.6f); // flatten orbit vertically
-
-                float sparkAlpha = (0.6f + 0.4f * (float)Math.Sin(t * 4f + i)) * (0.3f + proximityFactor * 0.7f);
-                var sparkColor = new Color(
-                    DangerSparkColor.R,
-                    DangerSparkColor.G,
-                    DangerSparkColor.B,
-                    (int)(255 * sparkAlpha));
-                GeometryBatch.DrawCircleApprox(sb, assets, sparkPos, 2f, sparkColor, 4);
+                // Green upward arrow (following)
+                float pulse = 0.7f + 0.3f * MathF.Sin(t * 3f);
+                var c = new Color(60, 220, 80, (int)(180 * pulse));
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X, iconY), new Vector2(pos.X, iconY - 5f), c, 1.5f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 2f, iconY - 3f), new Vector2(pos.X, iconY - 5f), c, 1.5f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 2f, iconY - 3f), new Vector2(pos.X, iconY - 5f), c, 1.5f);
+            }
+            else if (entity.IsFleeing)
+            {
+                // Orange outward arrows (fleeing)
+                float pulse = 0.7f + 0.3f * MathF.Sin(t * 5f);
+                var c = new Color(255, 160, 40, (int)(180 * pulse));
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 3f, iconY), new Vector2(pos.X - 6f, iconY - 3f), c, 1.5f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 3f, iconY), new Vector2(pos.X + 6f, iconY - 3f), c, 1.5f);
+            }
+            else if (entity.IsStuck)
+            {
+                // White X (stuck)
+                float pulse = 0.6f + 0.4f * MathF.Sin(t * 6f);
+                var c = new Color(220, 220, 220, (int)(200 * pulse));
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 3f, iconY - 3f), new Vector2(pos.X + 3f, iconY + 3f), c, 1.5f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 3f, iconY - 3f), new Vector2(pos.X - 3f, iconY + 3f), c, 1.5f);
+            }
+            else if (entity.IsDisoriented)
+            {
+                // Cyan spinning dots (disoriented)
+                float angle = t * 4f;
+                var c = new Color(80, 220, 255, 180);
+                for (int d = 0; d < 3; d++)
+                {
+                    float a = angle + d * MathHelper.TwoPi / 3f;
+                    Vector2 dp = new Vector2(MathF.Cos(a) * 4f, MathF.Sin(a) * 2f);
+                    GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X + dp.X, iconY + dp.Y), 1.2f, c, 4);
+                }
+            }
+            else if (entity.IsInfighting)
+            {
+                // Red crossed swords (infighting)
+                float pulse = 0.7f + 0.3f * MathF.Sin(t * 7f);
+                var c = new Color(220, 40, 40, (int)(200 * pulse));
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X - 4f, iconY - 4f), new Vector2(pos.X + 4f, iconY + 4f), c, 1.5f);
+                GeometryBatch.DrawLine(sb, assets, new Vector2(pos.X + 4f, iconY - 4f), new Vector2(pos.X - 4f, iconY + 4f), c, 1.5f);
+                // Small sparks
+                float sparkA = t * 8f;
+                for (int s = 0; s < 2; s++)
+                {
+                    float sa = sparkA + s * MathHelper.Pi;
+                    Vector2 sp = new Vector2(MathF.Cos(sa) * 3f, MathF.Sin(sa) * 3f);
+                    GeometryBatch.DrawCircleApprox(sb, assets, new Vector2(pos.X + sp.X, iconY + sp.Y), 0.8f,
+                        new Color(255, 120, 60, (int)(160 * pulse)), 4);
+                }
             }
         }
 
         /// <summary>
-        /// Draw the selection/control highlight outline around an entity.
+        /// Draws the selection / control highlight ring around an entity.
         /// </summary>
         private static void DrawEntityHighlight(SpriteBatch sb, AssetManager assets,
-            ControllableEntity entity, float widthPx, float heightPx)
+            ControllableEntity entity, float w, float h)
         {
             if (entity.IsControlled)
-            {
-                // Pulsing cyan outline while controlled
-                float pulse = 0.6f + 0.4f * (float)Math.Sin(AnimationClock.Pulse(3f));
-                var color = new Color(
-                    ControlHighlightColor.R,
-                    ControlHighlightColor.G,
-                    ControlHighlightColor.B,
-                    (int)(ControlHighlightColor.A * pulse));
-                DrawEntityOutline(sb, assets, entity.PixelPosition, widthPx + 6f, heightPx + 6f, color, 2);
-            }
+                DrawEntityOutline(sb, assets, entity.PixelPosition, w, h, ControlHighlightColor);
             else if (entity.IsHighlighted)
-            {
-                // Bright yellow outline when nearest to cursor in selection mode
-                DrawEntityOutline(sb, assets, entity.PixelPosition, widthPx + 8f, heightPx + 8f,
-                    SelectionHighlightColor, 2);
-            }
+                DrawEntityOutline(sb, assets, entity.PixelPosition, w, h, SelectionHighlightColor);
             else if (entity.IsInRange)
-            {
-                // Dim green outline when in selection range
-                DrawEntityOutline(sb, assets, entity.PixelPosition, widthPx + 4f, heightPx + 4f,
-                    InRangeHighlightColor, 1);
-            }
+                DrawEntityOutline(sb, assets, entity.PixelPosition, w, h, InRangeHighlightColor);
         }
 
         private static void DrawEntityOutline(SpriteBatch sb, AssetManager assets,
-            Vector2 center, float w, float h, Color color, int thickness)
+            Vector2 pos, float w, float h, Color color)
         {
-            // Draw as a rounded rectangle outline
-            var rect = new Microsoft.Xna.Framework.Rectangle(
-                (int)(center.X - w / 2f),
-                (int)(center.Y - h / 2f),
-                (int)w, (int)h);
-            assets.DrawRectOutline(sb, rect, color, thickness);
+            float r = Math.Max(w, h) * 0.55f;
+            float pulse = 0.85f + 0.15f * (float)Math.Sin(AnimationClock.Time * 3f);
+            GeometryBatch.DrawCircleOutline(sb, assets, pos, r * pulse, color, 2);
         }
 
         /// <summary>
-        /// Draw the control duration timer bar above the entity.
+        /// Draws the control-time-remaining bar above the entity.
         /// </summary>
         private static void DrawControlTimerBar(SpriteBatch sb, AssetManager assets,
-            ControllableEntity entity, float entityWidthPx)
+            ControllableEntity entity, float w)
         {
-            float barW  = Math.Max(entityWidthPx + 8f, 30f);
-            float barH  = 3f;
-            float barX  = entity.PixelPosition.X - barW / 2f;
-            float barY  = entity.PixelPosition.Y - entityWidthPx - 10f;
-
             float fraction = entity.ControlDuration > 0f
-                ? MathHelper.Clamp(entity.ControlTimer / entity.ControlDuration, 0f, 1f)
+                ? entity.ControlTimer / entity.ControlDuration
                 : 0f;
+            fraction = Math.Clamp(fraction, 0f, 1f);
+            int barW = (int)(w * 1.2f);
+            int barH = 3;
+            int barX = (int)(entity.PixelPosition.X - barW / 2f);
+            int barY = (int)(entity.PixelPosition.Y - entity.GetBounds().Height / 2f - 8);
 
-            // Background
-            assets.DrawRect(sb,
-                new Vector2(barX, barY),
-                new Vector2(barW, barH),
-                TimerBarBg);
-
-            // Foreground
+            assets.DrawRect(sb, new Rectangle(barX, barY, barW, barH), TimerBarBg);
             if (fraction > 0f)
-                assets.DrawRect(sb,
-                    new Vector2(barX, barY),
-                    new Vector2(barW * fraction, barH),
-                    TimerBarFg);
+                assets.DrawRect(sb, new Rectangle(barX, barY, (int)(barW * fraction), barH), TimerBarFg);
         }
 
         /// <summary>
-        /// Draw a small skill cooldown pip below the timer bar.
-        /// Green = ready, grey = on cooldown with fill showing progress.
+        /// Draws a small pip above the entity showing skill cooldown state.
         /// </summary>
         private static void DrawSkillCooldownPip(SpriteBatch sb, AssetManager assets,
-            ControllableEntity entity, float entityWidthPx)
+            ControllableEntity entity, float w)
         {
             if (entity.Skill == null) return;
 
-            float pipSize = 5f;
-            float pipX    = entity.PixelPosition.X - pipSize / 2f;
-            float pipY    = entity.PixelPosition.Y - entityWidthPx - 6f;
+            // fraction = 1 when ready (cooldown elapsed), 0 when just used
+            float fraction = entity.Skill.Cooldown > 0f
+                ? 1f - MathHelper.Clamp(entity.Skill.CooldownTimer / entity.Skill.Cooldown, 0f, 1f)
+                : 1f;
+            var color = entity.Skill.IsReady ? SkillReadyColor : SkillCooldownColor;
 
-            if (entity.Skill.IsReady)
-            {
-                assets.DrawRect(sb,
-                    new Vector2(pipX, pipY),
-                    new Vector2(pipSize, pipSize),
-                    SkillReadyColor);
-            }
-            else
-            {
-                assets.DrawRect(sb,
-                    new Vector2(pipX, pipY),
-                    new Vector2(pipSize, pipSize),
-                    SkillCooldownColor);
+            Vector2 pipPos = new Vector2(
+                entity.PixelPosition.X + w * 0.6f + 4f,
+                entity.PixelPosition.Y - entity.GetBounds().Height / 2f - 6f);
 
-                float fraction = entity.Skill.Cooldown > 0f
-                    ? 1f - entity.Skill.CooldownTimer / entity.Skill.Cooldown
-                    : 1f;
-                assets.DrawRect(sb,
-                    new Vector2(pipX, pipY + pipSize * (1f - fraction)),
-                    new Vector2(pipSize, pipSize * fraction),
-                    SkillReadyColor);
+            GeometryBatch.DrawCircleApprox(sb, assets, pipPos, 3f, color, 6);
+            if (fraction < 1f)
+            {
+                // Partial arc to show cooldown progress
+                int arcSegs = 6;
+                int filledSegs = (int)(fraction * arcSegs);
+                for (int s = 0; s < filledSegs; s++)
+                {
+                    float a0 = -MathHelper.PiOver2 + (s / (float)arcSegs) * MathHelper.TwoPi;
+                    float a1 = -MathHelper.PiOver2 + ((s + 0.9f) / arcSegs) * MathHelper.TwoPi;
+                    Vector2 p0 = pipPos + new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * 3f;
+                    Vector2 p1 = pipPos + new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * 3f;
+                    GeometryBatch.DrawLine(sb, assets, p0, p1, SkillReadyColor, 1f);
+                }
             }
         }
 
         /// <summary>
-        /// Draw the 200px selection range circle around the player in world space.
-        /// Call during selection mode before drawing entities.
+        /// Draws the selection-mode range circle in world space.
         /// </summary>
         public static void DrawSelectionRangeCircle(SpriteBatch sb, AssetManager assets,
-            Vector2 playerPixelPos)
+            Vector2 center, float radius)
         {
-            GeometryBatch.DrawCircleOutline(sb, assets, playerPixelPos,
-                EntityControlSystem.SelectionRange, RangeCircleColor, 1);
+            GeometryBatch.DrawCircleOutline(sb, assets, center, radius, RangeCircleColor, 16);
         }
 
         /// <summary>
-        /// Draw the isopod throw trajectory arc (parabolic dotted line).
+        /// Draws the skill effect range circle around a controlled entity in world space.
         /// </summary>
+        public static void DrawSkillRangeCircle(SpriteBatch sb, AssetManager assets,
+            Vector2 center, float radius)
+        {
+            GeometryBatch.DrawCircleOutline(sb, assets, center, radius, SkillRangeCircleColor, 16);
+        }
+
+        // ── Private helpers ───────────────────────────────────────────────────
+
         private static void DrawIsopodTrajectory(SpriteBatch sb, AssetManager assets,
             LuminousIsopod isopod)
         {
-            var points = isopod.TrajectoryPoints;
-            if (points == null || points.Length < 2) return;
+            var pts = isopod.TrajectoryPoints;
+            if (pts == null || pts.Length < 2) return;
 
-            var arcColor = new Color(80, 200, 240, 160);
-            for (int i = 0; i < points.Length - 1; i++)
+            var trailColor = new Color(80, 200, 220, 100);
+            for (int i = 0; i < pts.Length - 1; i++)
             {
-                // Dashed: draw every other segment
-                if (i % 2 == 0)
-                    GeometryBatch.DrawLine(sb, assets, points[i], points[i + 1], arcColor, 1);
+                float alpha = (i / (float)pts.Length) * 0.6f;
+                GeometryBatch.DrawLine(sb, assets, pts[i], pts[i + 1],
+                    new Color(trailColor.R, trailColor.G, trailColor.B, (int)(alpha * 255)), 1f);
             }
-
-            // Landing point marker
-            var landColor = new Color(80, 200, 240, 200);
-            GeometryBatch.DrawCircleOutline(sb, assets, points[^1], 4f, landColor, 1);
         }
-
-        // ── Web trail helper ───────────────────────────────────────────────────
 
         private static void DrawWebTrail(SpriteBatch sb, AssetManager assets,
             SilkWeaverSpider spider)
         {
-            var trailColor = new Color(200, 200, 255, 100);
-            var trail = spider.WebTrailPoints;
-            if (trail == null || trail.Count < 2) return;
+            var pts = spider.WebTrailPoints;
+            if (pts == null || pts.Count < 2) return;
 
-            var pts = new System.Collections.Generic.List<Vector2>(trail);
+            var webColor = new Color(200, 200, 255, 80);
             for (int i = 0; i < pts.Count - 1; i++)
             {
-                if (i % 2 == 0)
-                    GeometryBatch.DrawLine(sb, assets, pts[i], pts[i + 1], trailColor, 1);
+                float alpha = (i / (float)pts.Count) * 0.5f;
+                GeometryBatch.DrawLine(sb, assets, pts[i], pts[i + 1],
+                    new Color(webColor.R, webColor.G, webColor.B, (int)(alpha * 255)), 1f);
             }
         }
     }
