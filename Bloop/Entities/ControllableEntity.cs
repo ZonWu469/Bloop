@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -23,6 +24,19 @@ namespace Bloop.Entities
         DeepBurrowWorm,
         BlindCaveSalamander,
         LuminousIsopod
+    }
+
+    /// <summary>
+    /// How this entity reacts to player-owned light sources (lantern + flares).
+    /// </summary>
+    public enum LightReactionType
+    {
+        /// <summary>No reaction to light.</summary>
+        None,
+        /// <summary>Flees from light; cancels aggro when illuminated.</summary>
+        ScaredOfLight,
+        /// <summary>Wanders toward light sources (biased movement).</summary>
+        AttractedToLight
     }
 
     /// <summary>
@@ -142,6 +156,60 @@ namespace Bloop.Entities
         {
             PlayerPosition    = playerPixelPosition;
             HasPlayerPosition = true;
+        }
+
+        // ── Light reaction (set by subclass, driven by Level.Update) ──────────
+
+        /// <summary>
+        /// How this entity reacts to player-owned light sources (lantern + flares).
+        /// Override in subclasses to set ScaredOfLight or AttractedToLight.
+        /// </summary>
+        public virtual LightReactionType LightReaction => LightReactionType.None;
+
+        /// <summary>
+        /// Minimum perceived light intensity [0..1] before this entity reacts.
+        /// Below this threshold the entity ignores the light entirely.
+        /// Above it, reaction strength scales linearly from 0 → 1.
+        /// Override in subclasses to tune sensitivity.
+        /// </summary>
+        public virtual float LightTolerance => 0.5f;
+
+        /// <summary>
+        /// Perceived light strength [0..1] from all reaction-triggering sources combined.
+        /// Computed each frame by Level.Update() via SetLightPerception().
+        /// 0 = no light perceived; 1 = fully illuminated.
+        /// </summary>
+        public float PerceivedLight { get; private set; }
+
+        /// <summary>
+        /// Reaction strength after applying the tolerance gradient [0..1].
+        /// 0 = below tolerance (no reaction); 1 = maximum reaction.
+        /// </summary>
+        public float LightReactionStrength { get; private set; }
+
+        /// <summary>
+        /// Direction toward the brightest perceived light source (pixel space, normalised).
+        /// Zero vector when no light is perceived.
+        /// </summary>
+        public Vector2 LightSourceDirection { get; private set; }
+
+        /// <summary>
+        /// Called by Level.Update() each frame with the summed light perception data
+        /// from all player-owned reaction lights (lantern + active flares).
+        /// </summary>
+        public void SetLightPerception(float perceivedIntensity, Vector2 towardLight)
+        {
+            PerceivedLight = MathF.Min(perceivedIntensity, 1f);
+
+            // Gradient: reaction_strength = clamp((perceived - tolerance) / (1 - tolerance), 0, 1)
+            float tol = LightTolerance;
+            LightReactionStrength = tol >= 1f
+                ? 0f
+                : MathF.Max(0f, MathF.Min(1f, (PerceivedLight - tol) / (1f - tol)));
+
+            LightSourceDirection = towardLight.LengthSquared() > 0.0001f
+                ? Vector2.Normalize(towardLight)
+                : Vector2.Zero;
         }
 
         // ── Constructor ────────────────────────────────────────────────────────

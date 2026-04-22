@@ -282,8 +282,19 @@ namespace Bloop.Screens
             // ── Update grapple hook flight ─────────────────────────────────────
             _grapple?.Update(gameTime);
 
-            // ── Update level objects (pass player for lighting/interaction) ────
-            _level.Update(gameTime, _player);
+            // ── Prune expired flares from active list ─────────────────────────
+            _activeFlares.RemoveAll(f => f.IsDestroyed);
+
+            // ── Build reaction-light list (lantern + active flares) ───────────
+            // Only lantern and flares trigger entity light reactions.
+            var reactionLights = new System.Collections.Generic.List<Lighting.LightSource>();
+            if (_lanternLight != null && _lanternLight.EffectiveIntensity > 0f)
+                reactionLights.Add(_lanternLight);
+            foreach (var flare in _activeFlares)
+                reactionLights.Add(flare.Light);
+
+            // ── Update level objects (pass player + reaction lights) ──────────
+            _level.Update(gameTime, _player, reactionLights);
 
             // ── Update hover tooltip ───────────────────────────────────────────
             _hoverTooltip.Update(input, _camera, _level);

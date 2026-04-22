@@ -28,6 +28,11 @@ namespace Bloop.Entities
         public override float  MovementSpeed   => 90f;
         public override bool   CanSwim         => true;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.AttractedToLight;
+        /// <summary>Salamanders are curious — react at 40% perceived intensity.</summary>
+        public override float LightTolerance => 0.40f;
+
         private readonly InputManager _input;
         private readonly Camera       _camera;
 
@@ -104,6 +109,15 @@ namespace Bloop.Entities
                     SetVelocity(Vector2.Normalize(toTarget) * MovementSpeed * 1.5f); // 2× speed
                 DisorientTimer -= dt;
                 if (DisorientTimer <= 0f) { IsFollowing = false; FollowTarget = null; }
+                return;
+            }
+
+            // ── Light attraction: bias wander toward light source ─────────────
+            if (LightReactionStrength > 0f && LightSourceDirection.LengthSquared() > 0.0001f)
+            {
+                // Move toward the light, speed scales with reaction strength
+                float attractSpeed = MovementSpeed * 0.4f * (0.5f + LightReactionStrength * 0.5f);
+                SetVelocity(new Vector2(LightSourceDirection.X * attractSpeed, GetVelocityPixels().Y));
                 return;
             }
 

@@ -37,6 +37,11 @@ namespace Bloop.Entities
         public override float  ControlDuration => 30f;
         public override float  MovementSpeed   => 80f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.AttractedToLight;
+        /// <summary>Isopods are the most tolerant — only react at 55% perceived intensity.</summary>
+        public override float LightTolerance => 0.55f;
+
         // ── Glow Surge state ───────────────────────────────────────────────────
         public bool  GlowSurgeActive { get; private set; }
         public float GlowSurgeRadius { get; private set; }
@@ -210,6 +215,16 @@ namespace Bloop.Entities
                     SetVelocity(Vector2.Normalize(toPlayer) * MovementSpeed);
                 DisorientTimer -= dt;
                 if (DisorientTimer <= 0f) { IsFollowing = false; FollowTarget = null; }
+                return;
+            }
+
+            // ── Light attraction: bias wander toward light source ─────────────
+            // Only when not in scatter/regroup state (preserve existing behavior)
+            if (LightReactionStrength > 0f && LightSourceDirection.LengthSquared() > 0.0001f
+                && !_isScattered && _regroupTimer <= 0f)
+            {
+                float attractSpeed = MovementSpeed * 0.4f * LightReactionStrength;
+                SetVelocity(new Vector2(LightSourceDirection.X * attractSpeed, GetVelocityPixels().Y));
                 return;
             }
 

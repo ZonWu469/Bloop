@@ -373,7 +373,8 @@ namespace Bloop.World
         /// Pass the player reference so objects can check proximity/lighting.
         /// Also checks for spore light spawn requests from DisappearingPlatforms.
         /// </summary>
-        public void Update(GameTime gameTime, Gameplay.Player? player = null)
+        public void Update(GameTime gameTime, Gameplay.Player? player = null,
+            System.Collections.Generic.IReadOnlyList<LightSource>? reactionLights = null)
         {
             _lastPlayer = player;
 
@@ -385,13 +386,49 @@ namespace Bloop.World
             foreach (var chain in _chains)
                 chain.Update(gameTime);
 
-            // Propagate player position to all entities for idle AI proximity checks
+            // Propagate player position to all entities for idle AI proximity checks,
+            // and compute light perception from player-owned reaction lights.
             if (player != null)
             {
                 foreach (var obj in _objects)
                 {
                     if (obj is Entities.ControllableEntity entity && !entity.IsDestroyed)
+                    {
                         entity.SetPlayerReference(player.PixelPosition);
+
+                        // ── Light perception pass ──────────────────────────────
+                        // Only compute for entities that actually react to light.
+                        if (entity.LightReaction != Entities.LightReactionType.None
+                            && reactionLights != null && reactionLights.Count > 0)
+                        {
+                            float totalPerceived = 0f;
+                            Vector2 weightedDir  = Vector2.Zero;
+
+                            foreach (var light in reactionLights)
+                            {
+                                float dist = Vector2.Distance(entity.PixelPosition, light.EffectivePosition);
+                                float radius = light.EffectiveRadius;
+                                if (radius <= 0f || dist >= radius) continue;
+
+                                // Contribution: intensity × (1 - dist/radius), clamped [0,1]
+                                float contribution = light.EffectiveIntensity
+                                    * MathF.Max(0f, 1f - dist / radius);
+                                contribution = MathF.Min(contribution, 1f);
+
+                                totalPerceived += contribution;
+                                // Weight direction by contribution
+                                Vector2 toLight = light.EffectivePosition - entity.PixelPosition;
+                                weightedDir += toLight * contribution;
+                            }
+
+                            entity.SetLightPerception(totalPerceived, weightedDir);
+                        }
+                        else if (entity.LightReaction != Entities.LightReactionType.None)
+                        {
+                            // No reaction lights active — clear perception
+                            entity.SetLightPerception(0f, Vector2.Zero);
+                        }
+                    }
                 }
             }
 

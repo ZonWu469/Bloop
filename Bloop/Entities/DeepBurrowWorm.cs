@@ -33,6 +33,11 @@ namespace Bloop.Entities
         public override float ContactDamage          => 10f;
         public override float ContactStunDuration    => 0.5f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.AttractedToLight;
+        /// <summary>Worms react at 35% perceived intensity.</summary>
+        public override float LightTolerance => 0.35f;
+
         // ── Burrow state ───────────────────────────────────────────────────────
         public bool IsBurrowing { get; private set; }
         private float _burrowTimer;
@@ -127,6 +132,25 @@ namespace Bloop.Entities
             }
 
             if (IsStuck) { SetVelocity(Vector2.Zero); return; }
+
+            // ── Light attraction: bias wander toward light source ─────────────
+            if (LightReactionStrength > 0f && LightSourceDirection.LengthSquared() > 0.0001f)
+            {
+                // Emerge from idle burrow if currently hiding
+                if (_isBurrowed)
+                {
+                    _isBurrowed = false;
+                    if (Body != null) Body.IgnoreGravity = false;
+                    _wanderTimer = WanderInterval;
+                }
+
+                // Crawl toward the light
+                float attractSpeed = MovementSpeed * 0.5f * (0.5f + LightReactionStrength * 0.5f);
+                SetVelocity(new Vector2(
+                    LightSourceDirection.X > 0f ? attractSpeed : -attractSpeed,
+                    GetVelocityPixels().Y));
+                return;
+            }
 
             // ── Idle burrow cycle: periodically hide underground ───────────────
             if (_isBurrowed)

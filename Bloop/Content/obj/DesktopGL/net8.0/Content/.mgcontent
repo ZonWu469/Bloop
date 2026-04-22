@@ -4,9 +4,9 @@
   <Platform>DesktopGL</Platform>
   <Config />
   <SourceFiles>
-    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/MenuFont.spritefont</File>
-    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/GameFont.spritefont</File>
-    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Shaders/LightingEffect.fx</File>
+    <File>c:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/MenuFont.spritefont</File>
+    <File>c:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/GameFont.spritefont</File>
+    <File>c:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Shaders/LightingEffect.fx</File>
   </SourceFiles>
   <DestFiles>
     <File xsi:nil="true" />

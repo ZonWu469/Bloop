@@ -29,6 +29,11 @@ namespace Bloop.Entities
         public override float  ControlDuration => 14f;
         public override float  MovementSpeed   => 60f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.AttractedToLight;
+        /// <summary>Glowworms are tolerant — only react at 50% perceived intensity.</summary>
+        public override float LightTolerance => 0.50f;
+
         // ── Flash state ────────────────────────────────────────────────────────
         public bool  FlashActive  { get; private set; }
         public float FlashRadius  { get; private set; }
@@ -138,6 +143,15 @@ namespace Bloop.Entities
                     SetVelocity(Vector2.Normalize(toTarget) * MovementSpeed * 0.8f);
                 DisorientTimer -= dt;
                 if (DisorientTimer <= 0f) { IsFollowing = false; FollowTarget = null; }
+                return;
+            }
+
+            // ── Light attraction: bias wander toward light source ─────────────
+            if (LightReactionStrength > 0f && LightSourceDirection.LengthSquared() > 0.0001f)
+            {
+                // Gentle drift toward light — glowworms are slow and peaceful
+                float attractSpeed = MovementSpeed * 0.5f * LightReactionStrength;
+                SetVelocity(new Vector2(LightSourceDirection.X * attractSpeed, GetVelocityPixels().Y));
                 return;
             }
 

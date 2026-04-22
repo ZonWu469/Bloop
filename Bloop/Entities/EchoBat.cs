@@ -40,6 +40,11 @@ namespace Bloop.Entities
         public override float ContactDamage          => 5f;
         public override float ContactStunDuration    => 0.3f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.ScaredOfLight;
+        /// <summary>Bats are very sensitive — react at 15% perceived intensity.</summary>
+        public override float LightTolerance => 0.15f;
+
         // ── Sonic Pulse state (shared with renderer) ───────────────────────────
         /// <summary>True while the pulse ring is expanding (visual effect).</summary>
         public bool  PulseActive   { get; private set; }
@@ -201,6 +206,30 @@ namespace Bloop.Entities
             if (IsFollowing && FollowTarget != null)
             {
                 UpdateFollowing(dt);
+                return;
+            }
+
+            // ── Light reaction: scared bats flee and cancel aggro ──────────────
+            if (LightReactionStrength > 0f)
+            {
+                // Cancel any ongoing aggro swoop
+                if (_isAggro || _aggroRetreating)
+                {
+                    _isAggro         = false;
+                    _aggroRetreating = false;
+                    _aggroTimer      = 0f;
+                }
+
+                // Flee away from the light source
+                Vector2 fleeDir = -LightSourceDirection; // opposite of toward-light
+                if (fleeDir.LengthSquared() < 0.0001f)
+                    fleeDir = new Vector2(-1f, 0f);
+                float fleeSpeed = IdleWanderSpeed * (1f + LightReactionStrength * 2f);
+                SetVelocity(fleeDir * fleeSpeed);
+
+                // Fast wing flap while fleeing
+                _wingTimer += dt * 3f;
+                WingPhase = (_wingTimer % 1f);
                 return;
             }
 

@@ -50,6 +50,12 @@ namespace Bloop.Objects
             _lighting?.AddLight(_light);
         }
 
+        /// <summary>
+        /// The light source attached to this flare. Exposed so Level.Update can
+        /// include it in the entity light-reaction perception pass.
+        /// </summary>
+        public FlareLight Light => _light;
+
         public override Rectangle GetBounds()
             => new Rectangle((int)(PixelPosition.X - 12), (int)(PixelPosition.Y - 12), 24, 24);
 

@@ -34,6 +34,11 @@ namespace Bloop.Entities
         public override float ContactDamage          => 12f;
         public override float ContactStunDuration    => 0.8f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.ScaredOfLight;
+        /// <summary>Centipedes tolerate moderate light — react at 30% perceived intensity.</summary>
+        public override float LightTolerance => 0.30f;
+
         // ── Pulse state ────────────────────────────────────────────────────────
         public bool  PulseActive  { get; private set; }
         public float PulseRadius  { get; private set; }
@@ -126,6 +131,26 @@ namespace Bloop.Entities
                     SetVelocity(Vector2.Normalize(toTarget) * MovementSpeed * 0.8f);
                 DisorientTimer -= dt;
                 if (DisorientTimer <= 0f) { IsFollowing = false; FollowTarget = null; }
+                return;
+            }
+
+            // ── Light reaction: scared centipedes flee and cancel drop ambush ──
+            if (LightReactionStrength > 0f)
+            {
+                // Cancel any ongoing drop
+                if (_isDropping)
+                {
+                    _isDropping  = false;
+                    _dropTimer   = 0f;
+                    _wanderTimer = WanderInterval;
+                }
+
+                // Flee horizontally away from the light source
+                Vector2 fleeDir = -LightSourceDirection;
+                float fleeSpeed = CeilingPatrolSpeed * (1f + LightReactionStrength * 2f);
+                SetVelocity(new Vector2(
+                    fleeDir.LengthSquared() > 0.0001f ? MathF.Sign(fleeDir.X) * fleeSpeed : fleeSpeed,
+                    GetVelocityPixels().Y));
                 return;
             }
 

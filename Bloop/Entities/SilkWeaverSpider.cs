@@ -33,6 +33,11 @@ namespace Bloop.Entities
         public override float ContactDamage          => 8f;
         public override float ContactStunDuration    => 0.5f;
 
+        // ── Light reaction ─────────────────────────────────────────────────────
+        public override LightReactionType LightReaction => LightReactionType.ScaredOfLight;
+        /// <summary>Spiders react at 25% perceived intensity.</summary>
+        public override float LightTolerance => 0.25f;
+
         // ── Web trail ──────────────────────────────────────────────────────────
         public List<Vector2> WebTrailPoints { get; } = new List<Vector2>();
         private float _trailRecordTimer;
@@ -136,6 +141,27 @@ namespace Bloop.Entities
 
             if (IsStuck) { SetVelocity(Vector2.Zero); return; }
             if (IsFleeing) { SetVelocity(FleeDirection * MovementSpeed * 0.5f); return; }
+
+            // ── Light reaction: scared spiders flee and cancel lunge ───────────
+            if (LightReactionStrength > 0f)
+            {
+                // Cancel any ongoing lunge
+                if (_isLunging)
+                {
+                    _isLunging    = false;
+                    _lungeTimer   = 0f;
+                    _wanderTarget = PixelPosition;
+                    _wanderTimer  = WanderInterval;
+                }
+
+                // Flee away from the light source
+                Vector2 fleeDir = -LightSourceDirection;
+                float fleeSpeed = PatrolSpeed * (1f + LightReactionStrength * 2f);
+                SetVelocity(new Vector2(
+                    fleeDir.LengthSquared() > 0.0001f ? MathF.Sign(fleeDir.X) * fleeSpeed : fleeSpeed,
+                    GetVelocityPixels().Y));
+                return;
+            }
 
             // ── Lunge at player when close ─────────────────────────────────────
             if (_isLunging)
