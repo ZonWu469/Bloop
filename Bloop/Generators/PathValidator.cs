@@ -342,17 +342,18 @@ namespace Bloop.Generators
 
         /// <summary>
         /// Returns true if the player body can physically occupy tile (tx, ty).
-        /// Checks a 2-tile-tall footprint (the player is ~1.25 tiles tall) so that
-        /// 1-tile-tall passages are correctly rejected as impassable (A4).
-        /// The tile itself AND the tile directly above must both be passable.
+        /// Checks a 3-tile-tall footprint (the player is ~1.875 tiles tall) so that
+        /// 1-tile and 2-tile-tall passages are correctly rejected as impassable.
+        /// The tile itself AND the two tiles directly above must all be passable.
         /// </summary>
         private static bool IsPassableForPlayer(TileMap map, int tx, int ty,
             HashSet<(int, int)>? blockedTiles)
         {
             // The foot tile must be passable
             if (!IsPassable(map, tx, ty, blockedTiles)) return false;
-            // The head tile (one above) must also be passable — player is ~1.25 tiles tall
+            // The head tiles (two above) must also be passable — player is ~1.875 tiles tall
             if (!IsPassable(map, tx, ty - 1, blockedTiles)) return false;
+            if (!IsPassable(map, tx, ty - 2, blockedTiles)) return false;
             return true;
         }
     }

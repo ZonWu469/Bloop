@@ -28,6 +28,9 @@ namespace Bloop.Core
         /// <summary>A single white pixel — tint it any color when drawing.</summary>
         public Texture2D Pixel { get; private set; } = null!;
 
+        // ── Shared radial gradient (single instance, scaled at draw time) ───────
+        private Texture2D? _sharedRadialGradient;
+
         // ── Player spritesheets ────────────────────────────────────────────────
         /// <summary>Idle / default animation (also used for Crouching, ThrowingFlare).</summary>
         public PlayerSpritesheet? PlayerIdle        { get; private set; }
@@ -153,8 +156,22 @@ namespace Bloop.Core
         }
 
         /// <summary>
+        /// Returns a single shared 512×512 radial gradient texture.
+        /// Use SpriteBatch's scale parameter to resize it at draw time instead of
+        /// creating per-diameter textures (which caused an unbounded memory leak).
+        /// </summary>
+        public Texture2D GetSharedRadialGradient()
+        {
+            if (_sharedRadialGradient != null) return _sharedRadialGradient;
+            _sharedRadialGradient = CreateRadialGradientTexture(512);
+            return _sharedRadialGradient;
+        }
+
+        /// <summary>
         /// Create a radial gradient texture for light rendering.
         /// Center is white (full intensity), edges are black (zero intensity).
+        /// NOTE: Do NOT call this per-frame with varying diameters — it caches by
+        /// exact diameter and will leak GPU memory. Use GetSharedRadialGradient() instead.
         /// </summary>
         public Texture2D CreateRadialGradient(int diameter)
         {
@@ -162,27 +179,7 @@ namespace Bloop.Core
             if (_textureCache.TryGetValue(key, out var cached))
                 return cached;
 
-            int radius = diameter / 2;
-            var data   = new Color[diameter * diameter];
-
-            for (int y = 0; y < diameter; y++)
-            {
-                for (int x = 0; x < diameter; x++)
-                {
-                    float dx   = x - radius;
-                    float dy   = y - radius;
-                    float dist = MathHelper.Clamp(
-                        (float)System.Math.Sqrt(dx * dx + dy * dy) / radius, 0f, 1f);
-
-                    // Smooth falloff: 1 at center, 0 at edge
-                    float intensity = 1f - dist * dist;
-                    byte  b         = (byte)(intensity * 255);
-                    data[y * diameter + x] = new Color(b, b, b, (byte)255);
-                }
-            }
-
-            var tex = new Texture2D(_graphicsDevice, diameter, diameter);
-            tex.SetData(data);
+            var tex = CreateRadialGradientTexture(diameter);
             _textureCache[key] = tex;
             return tex;
         }
@@ -249,12 +246,41 @@ namespace Bloop.Core
         // ── Cleanup ────────────────────────────────────────────────────────────
         public void Dispose()
         {
+            _sharedRadialGradient?.Dispose();
+            _sharedRadialGradient = null;
+
             foreach (var tex in _textureCache.Values)
                 tex?.Dispose();
             _textureCache.Clear();
         }
 
         // ── Private helpers ────────────────────────────────────────────────────
+
+        private Texture2D CreateRadialGradientTexture(int diameter)
+        {
+            int radius = diameter / 2;
+            var data   = new Color[diameter * diameter];
+
+            for (int y = 0; y < diameter; y++)
+            {
+                for (int x = 0; x < diameter; x++)
+                {
+                    float dx   = x - radius;
+                    float dy   = y - radius;
+                    float dist = MathHelper.Clamp(
+                        (float)System.Math.Sqrt(dx * dx + dy * dy) / radius, 0f, 1f);
+
+                    float intensity = 1f - dist * dist;
+                    byte  b         = (byte)(intensity * 255);
+                    data[y * diameter + x] = new Color(b, b, b, (byte)255);
+                }
+            }
+
+            var tex = new Texture2D(_graphicsDevice, diameter, diameter);
+            tex.SetData(data);
+            return tex;
+        }
+
         private Texture2D CreateSolidTexture(int width, int height, Color color)
         {
             var tex  = new Texture2D(_graphicsDevice, width, height);

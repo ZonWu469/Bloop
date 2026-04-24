@@ -19,7 +19,7 @@ namespace Bloop.Objects
     /// </summary>
     public class ResonanceShard : WorldObject
     {
-        private const int SensorSize = 20;
+        private const int SensorSize = 40; // 2× larger
 
         private static readonly Color ColCore  = new Color(180, 140, 255);
         private static readonly Color ColOuter = new Color(220, 190, 255);

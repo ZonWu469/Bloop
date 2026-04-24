@@ -18,7 +18,7 @@ namespace Bloop.Gameplay
     {
         // ── Tuning constants ───────────────────────────────────────────────────
         /// <summary>Horizontal movement force in Newtons (applied per frame).</summary>
-        private const float MoveForce         = 500f;
+        private const float MoveForce         = 750f;  // scaled 1.5× for larger body
         /// <summary>Maximum horizontal speed in pixels/second.</summary>
         private const float MaxHorizontalSpeed = 180f;
         /// <summary>
@@ -35,7 +35,7 @@ namespace Bloop.Gameplay
         /// </summary>
         private const float MaxFallSpeedHard = 800f;
         /// <summary>Jump impulse in pixel-space units (converted to meters).</summary>
-        private const float JumpImpulse       = 160f;
+        private const float JumpImpulse       = 240f;  // scaled 1.5× for larger body
         /// <summary>Climbing vertical speed in pixels/second.</summary>
         private const float ClimbSpeed        = 100f;
         /// <summary>Slope angle threshold for auto-slide (degrees).</summary>
@@ -58,7 +58,7 @@ namespace Bloop.Gameplay
         /// Maximum pixels the player's head can be above a ledge top to trigger a mantle.
         /// Allows grabbing ledges even when slightly above them.
         /// </summary>
-        private const float MantleHeadTolerance = 12f;
+        private const float MantleHeadTolerance = 18f;  // scaled 1.5× for larger body
 
         // ── Coyote time constants ──────────────────────────────────────────────
         /// <summary>

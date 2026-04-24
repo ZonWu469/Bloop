@@ -202,11 +202,10 @@ namespace Bloop.Lighting
                     float intensity = light.EffectiveIntensity;
                     if (intensity <= 0f || radius <= 0f) continue;
 
-                    // Get or create a radial gradient texture at the light's diameter
-                    int diameter = (int)(radius * 2f);
-                    if (diameter < 2) continue;
-
-                    var gradientTex = _assets.CreateRadialGradient(diameter);
+                    // Single shared 512×512 gradient, scaled to the light's diameter.
+                    // Avoids creating a new Texture2D per unique integer diameter (memory leak).
+                    var gradientTex = _assets.GetSharedRadialGradient();
+                    float scale = radius * 2f / gradientTex.Width;
 
                     // Draw centered at the light's effective world position (includes sway)
                     // Scale only RGB by intensity; keep alpha=255 so SourceAlpha blend
@@ -222,8 +221,8 @@ namespace Bloop.Lighting
                         null,
                         tint,
                         0f,
-                        new Vector2(diameter / 2f, diameter / 2f), // center origin
-                        1f,
+                        new Vector2(gradientTex.Width / 2f, gradientTex.Height / 2f),
+                        scale,
                         SpriteEffects.None,
                         0f);
                 }

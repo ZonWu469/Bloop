@@ -23,7 +23,7 @@ namespace Bloop.Objects
     {
         public enum Variant { Cyan, Violet, Red }
 
-        private const int   SensorSize       = 22;
+        private const int   SensorSize       = 44; // 2× larger
         private const float ShatterDuration  = 5f;
         private const float ShatterFlashPeak = 4.5f;
 

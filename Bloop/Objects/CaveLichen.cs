@@ -20,8 +20,8 @@ namespace Bloop.Objects
     /// </summary>
     public class CaveLichen : WorldObject
     {
-        protected const int ObjectWidth  = 16;
-        protected const int ObjectHeight = 16;
+        protected const int ObjectWidth  = 32; // 2× larger
+        protected const int ObjectHeight = 32; // 2× larger
 
         protected const float HealAmount         = 20f;
         protected const float PoisonDamage       = 10f;

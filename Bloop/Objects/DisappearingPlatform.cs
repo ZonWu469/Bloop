@@ -25,8 +25,8 @@ namespace Bloop.Objects
     public class DisappearingPlatform : WorldObject
     {
         // ── Dimensions ─────────────────────────────────────────────────────────
-        public const int PlatformWidth  = 64;
-        public const int PlatformHeight = 8;
+        public const int PlatformWidth  = 128; // 2× larger
+        public const int PlatformHeight = 16;  // 2× larger
 
         // ── Tuning ─────────────────────────────────────────────────────────────
         private const float CountdownDuration = 5f;

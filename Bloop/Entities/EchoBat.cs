@@ -26,8 +26,8 @@ namespace Bloop.Entities
     public class EchoBat : ControllableEntity
     {
         // ── Dimensions ─────────────────────────────────────────────────────────
-        public const float WidthPx  = 16f;
-        public const float HeightPx = 10f;
+        public const float WidthPx  = 32f; // 2× larger
+        public const float HeightPx = 20f; // 2× larger
 
         // ── Identity ───────────────────────────────────────────────────────────
         public override string DisplayName    => "Echo Bat";

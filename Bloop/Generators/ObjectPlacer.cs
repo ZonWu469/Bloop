@@ -317,7 +317,8 @@ namespace Bloop.Generators
 
             // ── Phase 1: Minimum clearance pre-filter ─────────────────────────
             // Remove any wall-attached object whose tile footprint sits in a passage
-            // that is only 2 tiles wide (the object would reduce clearance to 1 tile).
+            // that is only 3 tiles wide (the object would reduce clearance below the
+            // 3-tile minimum required for the 1.875-tile-tall player).
             placements.RemoveAll(p =>
             {
                 if (!IsWallAttached(p.Type)) return false;
@@ -330,9 +331,9 @@ namespace Bloop.Generators
                 // Measure vertical passage width at this tile
                 int vWidth = MeasurePassageWidth(map, tx, ty, horizontal: false);
 
-                // If the narrowest dimension is exactly 2, removing this object
-                // would leave only 1 tile of clearance — reject it.
-                return hWidth <= 2 || vWidth <= 2;
+                // If the narrowest dimension is 3 or less, placing this object would
+                // reduce clearance below the 3-tile minimum — reject it.
+                return hWidth <= 3 || vWidth <= 3;
             });
 
             // ── Phase 2: BFS with object footprints as blocked tiles ──────────

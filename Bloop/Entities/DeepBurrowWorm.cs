@@ -20,8 +20,8 @@ namespace Bloop.Entities
     /// </summary>
     public class DeepBurrowWorm : ControllableEntity
     {
-        public const float WidthPx  = 10f;
-        public const float HeightPx = 24f;
+        public const float WidthPx  = 20f; // 2× larger
+        public const float HeightPx = 48f; // 2× larger
 
         public override string DisplayName    => "Deep Burrow Worm";
         public override float  ControlDuration => 20f;

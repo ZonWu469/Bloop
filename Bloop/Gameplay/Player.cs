@@ -56,9 +56,9 @@ namespace Bloop.Gameplay
     public class Player
     {
         // ── Dimensions (pixels) ────────────────────────────────────────────────
-        public const float WidthPx         = 24f;
-        public const float StandingHeightPx = 40f;
-        public const float CrouchHeightPx   = 20f;
+        public const float WidthPx         = 36f;  // 1.5× larger
+        public const float StandingHeightPx = 60f; // 1.5× larger
+        public const float CrouchHeightPx   = 30f; // 1.5× larger
 
         /// <summary>Current hitbox height in pixels — switches between standing and crouch.</summary>
         public float CurrentHeightPx { get; private set; } = StandingHeightPx;
@@ -640,12 +640,13 @@ namespace Bloop.Gameplay
 
                         // Bounds check
                         if (tx < 1 || tx >= _tileMap.Width  - 1) continue;
-                        if (ty < 1 || ty >= _tileMap.Height - 2) continue;
+                        if (ty < 2 || ty >= _tileMap.Height - 2) continue;
 
-                        // Need 2 clear tiles vertically (player is ~1.25 tiles tall)
-                        bool footClear = !TileProperties.IsSolid(_tileMap.GetTile(tx, ty));
-                        bool headClear = !TileProperties.IsSolid(_tileMap.GetTile(tx, ty - 1));
-                        if (!footClear || !headClear) continue;
+                        // Need 3 clear tiles vertically (player is ~1.875 tiles tall)
+                        bool footClear  = !TileProperties.IsSolid(_tileMap.GetTile(tx, ty));
+                        bool headClear1 = !TileProperties.IsSolid(_tileMap.GetTile(tx, ty - 1));
+                        bool headClear2 = !TileProperties.IsSolid(_tileMap.GetTile(tx, ty - 2));
+                        if (!footClear || !headClear1 || !headClear2) continue;
 
                         // Found a safe position — teleport there and zero velocity
                         Vector2 safePixel = new Vector2(

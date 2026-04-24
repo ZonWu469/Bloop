@@ -7,7 +7,8 @@
       "Read(//c/Users/dbagn/.roo//**)",
       "Read(//c/Users/dbagn/.config/**)",
       "Read(//c/Users/dbagn/.claude//**)",
-      "Read(//c/Users/dbagn/**)"
+      "Read(//c/Users/dbagn/**)",
+      "Bash(grep -v \"FilePath\\\\|FileName\\\\|//.*File\\\\|filepath\\\\|filename\")"
     ]
   }
 }

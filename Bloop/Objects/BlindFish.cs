@@ -26,8 +26,8 @@ namespace Bloop.Objects
     /// </summary>
     public class BlindFish : CaveLichen
     {
-        private new const int ObjectWidth  = 20;
-        private new const int ObjectHeight = 10;
+        private new const int ObjectWidth  = 40; // 2× larger
+        private new const int ObjectHeight = 20; // 2× larger
 
         private new const float HealAmount         = 30f;
         private new const float PoisonDamage       = 5f;

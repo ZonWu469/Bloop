@@ -32,7 +32,7 @@ namespace Bloop.Objects
 
         // ── Segment geometry ───────────────────────────────────────────────────
         private const float SegmentSize   = TileMap.TileSize;       // 32 px
-        private const float SegmentHeight = TileMap.TileSize * 0.5f; // 16 px — thin platform
+        private const float SegmentHeight = TileMap.TileSize * 1.0f; // 32 px — thicker platform (2×)
 
         // ── Timing ranges ──────────────────────────────────────────────────────
         private const float DormantMin   = 2f;

@@ -43,7 +43,7 @@ namespace Bloop.Objects
         }
 
         public override Rectangle GetBounds() => new Rectangle(
-            (int)(PixelPosition.X - 12), (int)(PixelPosition.Y - 12), 24, 24);
+            (int)(PixelPosition.X - 24), (int)(PixelPosition.Y - 24), 48, 48);
 
         public override void Update(GameTime gameTime)
         {

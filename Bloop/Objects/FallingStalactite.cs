@@ -29,9 +29,9 @@ namespace Bloop.Objects
         private const float RespawnDuration = 30f;
         private float _timer;
 
-        private const int   Width         = 10;
-        private const int   Height        = 20;
-        private const float DetectRadiusX = 2f * 32f;
+        private const int   Width         = 20;  // 2× larger
+        private const int   Height        = 40;  // 2× larger
+        private const float DetectRadiusX = 3f * 32f; // wider detection for larger player
         private const float Damage        = 20f;
 
         private readonly Vector2 _spawnPixelPos;

@@ -20,8 +20,8 @@ namespace Bloop.Entities
     /// </summary>
     public class ChainCentipede : ControllableEntity
     {
-        public const float WidthPx  = 30f;
-        public const float HeightPx = 8f;
+        public const float WidthPx  = 60f; // 2× larger
+        public const float HeightPx = 16f; // 2× larger
 
         public override string DisplayName    => "Chain Centipede";
         public override float  ControlDuration => 11f;

@@ -20,8 +20,8 @@ namespace Bloop.Entities
     /// </summary>
     public class BlindCaveSalamander : ControllableEntity
     {
-        public const float WidthPx  = 22f;
-        public const float HeightPx = 10f;
+        public const float WidthPx  = 44f; // 2× larger
+        public const float HeightPx = 20f; // 2× larger
 
         public override string DisplayName    => "Blind Cave Salamander";
         public override float  ControlDuration => 13f;

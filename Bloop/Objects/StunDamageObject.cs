@@ -20,7 +20,7 @@ namespace Bloop.Objects
     /// </summary>
     public class StunDamageObject : WorldObject
     {
-        private const int   ObjectSize    = 24;
+        private const int   ObjectSize    = 48; // 2× larger
         private const float DamageAmount  = 15f;
         private const float StunDuration  = 1.5f;
         private const float Cooldown      = 3f;

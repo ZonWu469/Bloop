@@ -231,8 +231,8 @@ namespace Bloop.Generators
         // Note: actual worm counts come from BiomeProfile (scaled for 160-wide map).
         private const int WormMinSteps = 20;
         private const int WormMaxSteps = 80;  // increased from 50 to span wider map
-        private const int WormMinWidth = 2;
-        private const int WormMaxWidth = 4;
+        private const int WormMinWidth = 3;
+        private const int WormMaxWidth = 5;
 
         // ── Climbable wall chance ──────────────────────────────────────────────
         /// <summary>Base chance per eligible wall run to become climbable.</summary>
@@ -480,8 +480,8 @@ namespace Bloop.Generators
 
                         if (forked && y < forkEndY)
                         {
-                            // Carve both fork branches (2 tiles wide each)
-                            for (int dx = 0; dx < 2; dx++)
+                            // Carve both fork branches (3 tiles wide each)
+                            for (int dx = 0; dx < 3; dx++)
                             {
                                 map.SetTile(Math.Clamp(forkX1 + dx, 1, w - 2), y, TileType.Empty);
                                 map.SetTile(Math.Clamp(forkX2 + dx, 1, w - 2), y, TileType.Empty);
@@ -505,7 +505,7 @@ namespace Bloop.Generators
                         {
                             int alcoveDir    = rng.Next(2) == 0 ? -1 : 1;
                             int alcoveLength = rng.Next(4, 10);
-                            int alcoveHeight = 2;
+                            int alcoveHeight = 3; // widened for larger player
 
                             for (int ax = 1; ax <= alcoveLength; ax++)
                             {
@@ -829,10 +829,10 @@ namespace Bloop.Generators
 
                         if (!connected)
                         {
-                            // Carve a 2-tile gap through the pillar band at this column
+                            // Carve a 3-tile gap through the pillar band at this column
                             map.SetTile(tx, ty, TileType.Empty);
-                            if (tx + 1 < w - 2)
-                                map.SetTile(tx + 1, ty, TileType.Empty);
+                            if (tx + 1 < w - 2) map.SetTile(tx + 1, ty, TileType.Empty);
+                            if (tx + 2 < w - 2) map.SetTile(tx + 2, ty, TileType.Empty);
                         }
                     }
                 }
@@ -913,19 +913,19 @@ namespace Bloop.Generators
         // ── Minimum passage width ──────────────────────────────────────────────
 
         /// <summary>
-        /// Ensure all passages are wide enough for the player body (~0.75×1.25 tiles).
+        /// Ensure all passages are wide enough for the player body (~1.125×1.875 tiles).
         ///
         /// Pass 1 — Vertical clearance: any empty tile with solid directly above AND
-        ///   below is a 1-tile-tall horizontal passage. Clear the tile above so the
-        ///   player (1.25 tiles tall) can pass through.
+        ///   below is a 1-tile-tall horizontal passage. Clear 2 tiles above so the
+        ///   player (1.875 tiles tall) has 3-tile headroom.
         ///
         /// Pass 2 — Horizontal clearance: any empty tile with solid directly left AND
-        ///   right is a 1-tile-wide vertical passage. Clear the tile to the right so
-        ///   the player (0.75 tiles wide) has room.
+        ///   right is a 1-tile-wide vertical passage. Clear 2 tiles to the right so
+        ///   the player (1.125 tiles wide) and large entities (up to 60px) have room.
         ///
         /// Pass 3 — Player-footprint check: scan every empty tile and verify that a
-        ///   2-wide × 2-tall rectangle centred on it fits without overlapping solid
-        ///   tiles. If it doesn't, clear the most constrained neighbour.
+        ///   3-tall rectangle centred on it fits without overlapping solid tiles.
+        ///   If it doesn't, clear the most constrained neighbour.
         ///
         /// Pass 4 — Diagonal pinch elimination (A2): two diagonally-adjacent solid
         ///   tiles with both orthogonal neighbours empty create a gap the player can
@@ -937,7 +937,7 @@ namespace Bloop.Generators
             int h = map.Height;
 
             // ── Pass 1: Widen 1-tile-tall horizontal passages ─────────────────
-            for (int ty = 2; ty < h - 2; ty++)
+            for (int ty = 3; ty < h - 2; ty++)
             {
                 for (int tx = 1; tx < w - 1; tx++)
                 {
@@ -946,14 +946,17 @@ namespace Bloop.Generators
                     bool solidAbove = TileProperties.IsSolid(map.GetTile(tx, ty - 1));
                     bool solidBelow = TileProperties.IsSolid(map.GetTile(tx, ty + 1));
 
-                    // 1-tile-tall gap — clear the tile above to give 2-tile headroom
-                    if (solidAbove && solidBelow && ty > 2)
+                    // 1-tile-tall gap — clear 2 tiles above to give 3-tile headroom
+                    if (solidAbove && solidBelow && ty > 3)
+                    {
                         map.SetTile(tx, ty - 1, TileType.Empty);
+                        map.SetTile(tx, ty - 2, TileType.Empty);
+                    }
                 }
             }
 
             // ── Pass 2: Widen 1-tile-wide vertical passages ───────────────────
-            for (int tx = 2; tx < w - 2; tx++)
+            for (int tx = 3; tx < w - 3; tx++)
             {
                 for (int ty = 1; ty < h - 1; ty++)
                 {
@@ -962,29 +965,33 @@ namespace Bloop.Generators
                     bool solidLeft  = TileProperties.IsSolid(map.GetTile(tx - 1, ty));
                     bool solidRight = TileProperties.IsSolid(map.GetTile(tx + 1, ty));
 
-                    // 1-tile-wide gap — clear the tile to the right
-                    if (solidLeft && solidRight && tx < w - 2)
+                    // 1-tile-wide gap — clear 2 tiles to the right for 3-tile width
+                    if (solidLeft && solidRight && tx < w - 3)
+                    {
                         map.SetTile(tx + 1, ty, TileType.Empty);
+                        map.SetTile(tx + 2, ty, TileType.Empty);
+                    }
                 }
             }
 
             // ── Pass 3: Player-footprint check (A1) ───────────────────────────
-            // The player body is ~0.75 tiles wide × 1.25 tiles tall.
-            // Require every empty tile to have at least one empty tile above it
-            // (2-tile vertical clearance) so the player can stand there.
-            for (int ty = 2; ty < h - 2; ty++)
+            // The player body is ~1.125 tiles wide × 1.875 tiles tall.
+            // Require every empty tile to have at least 2 empty tiles above it
+            // (3-tile vertical clearance) so the player can stand there.
+            for (int ty = 3; ty < h - 2; ty++)
             {
                 for (int tx = 1; tx < w - 1; tx++)
                 {
                     if (map.GetTile(tx, ty) != TileType.Empty) continue;
 
-                    // Need the tile above to be empty for standing headroom
-                    if (TileProperties.IsSolid(map.GetTile(tx, ty - 1)))
+                    // Need 2 tiles above empty for standing headroom
+                    if (TileProperties.IsSolid(map.GetTile(tx, ty - 1)) ||
+                        TileProperties.IsSolid(map.GetTile(tx, ty - 2)))
                     {
-                        // Clear the tile above — prefer this over clearing below
+                        // Clear tiles above — prefer this over clearing below
                         // (floor tiles are more structurally important)
-                        if (ty - 1 > 1)
-                            map.SetTile(tx, ty - 1, TileType.Empty);
+                        if (ty - 1 > 1) map.SetTile(tx, ty - 1, TileType.Empty);
+                        if (ty - 2 > 1) map.SetTile(tx, ty - 2, TileType.Empty);
                     }
                 }
             }
@@ -1374,20 +1381,22 @@ namespace Bloop.Generators
                     injected = true;
                 }
 
-                // Last resort: carve a small 2-tile ledge into the nearest wall
+                // Last resort: carve a small 3-tile ledge into the nearest wall
                 if (!injected)
                 {
                     int ledgeY = midY;
                     // Try to carve a ledge to the left
-                    if (tx - 2 >= 1)
+                    if (tx - 3 >= 1)
                     {
                         map.SetTile(tx - 1, ledgeY, TileType.Empty);
                         map.SetTile(tx - 2, ledgeY, TileType.Empty);
+                        map.SetTile(tx - 3, ledgeY, TileType.Empty);
                     }
-                    else if (tx + 2 < w - 1)
+                    else if (tx + 3 < w - 1)
                     {
                         map.SetTile(tx + 1, ledgeY, TileType.Empty);
                         map.SetTile(tx + 2, ledgeY, TileType.Empty);
+                        map.SetTile(tx + 3, ledgeY, TileType.Empty);
                     }
                 }
             }

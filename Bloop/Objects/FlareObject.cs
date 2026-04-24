@@ -36,8 +36,8 @@ namespace Bloop.Objects
             Body = world.CreateBody(PhysicsManager.ToMeters(spawnPixelPos), 0f, BodyType.Dynamic);
             Body.FixedRotation = true;
 
-            float w = PhysicsManager.ToMeters(6f);
-            float h = PhysicsManager.ToMeters(3f);
+            float w = PhysicsManager.ToMeters(12f); // 2× larger
+            float h = PhysicsManager.ToMeters(6f);  // 2× larger
             var fixture = Body.CreateRectangle(w, h, 0.8f, Vector2.Zero);
             fixture.CollisionCategories = CollisionCategories.WorldObject;
             fixture.CollidesWith        = CollisionCategories.Terrain | CollisionCategories.Platform;
@@ -57,7 +57,7 @@ namespace Bloop.Objects
         public FlareLight Light => _light;
 
         public override Rectangle GetBounds()
-            => new Rectangle((int)(PixelPosition.X - 12), (int)(PixelPosition.Y - 12), 24, 24);
+            => new Rectangle((int)(PixelPosition.X - 24), (int)(PixelPosition.Y - 24), 48, 48);
 
         public override void Update(GameTime gameTime)
         {

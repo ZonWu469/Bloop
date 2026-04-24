@@ -39,7 +39,7 @@ namespace Bloop.Objects
         public void SetLightSource(LightSource light) => _light = light;
 
         public override Rectangle GetBounds() => new Rectangle(
-            (int)(PixelPosition.X - 14), (int)(PixelPosition.Y - 16), 28, 20);
+            (int)(PixelPosition.X - 28), (int)(PixelPosition.Y - 32), 56, 40);
 
         public override void Update(GameTime gameTime)
         {

@@ -29,9 +29,9 @@ namespace Bloop.Objects
     public class VentFlower : WorldObject
     {
         // ── Dimensions ─────────────────────────────────────────────────────────
-        private const int VisualWidth  = 32;
-        private const int VisualHeight = 48;
-        private const int SensorSize   = 64;
+        private const int VisualWidth  = 64;  // 2× larger
+        private const int VisualHeight = 96;  // 2× larger
+        private const int SensorSize   = 128; // 2× larger
 
         // ── Tuning ─────────────────────────────────────────────────────────────
         private const float RefillTime = 5f;   // seconds standing to trigger refill

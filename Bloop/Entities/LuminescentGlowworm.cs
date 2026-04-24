@@ -22,8 +22,8 @@ namespace Bloop.Entities
     /// </summary>
     public class LuminescentGlowworm : ControllableEntity
     {
-        public const float WidthPx  = 12f;
-        public const float HeightPx = 8f;
+        public const float WidthPx  = 24f; // 2× larger
+        public const float HeightPx = 16f; // 2× larger
 
         public override string DisplayName    => "Luminescent Glowworm";
         public override float  ControlDuration => 14f;

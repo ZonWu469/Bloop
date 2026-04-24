@@ -30,8 +30,8 @@ namespace Bloop.Entities
     /// </summary>
     public class LuminousIsopod : ControllableEntity
     {
-        public const float WidthPx  = 14f;
-        public const float HeightPx = 8f;
+        public const float WidthPx  = 28f; // 2× larger
+        public const float HeightPx = 16f; // 2× larger
 
         public override string DisplayName    => "Luminous Isopod";
         public override float  ControlDuration => 30f;

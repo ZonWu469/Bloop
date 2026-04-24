@@ -36,7 +36,7 @@ namespace Bloop.Physics
             // (slingshot launches, grapple releases, long falls).
             body.IsBullet = true;
 
-            CreatePlayerFixtures(body, 24f, 40f);
+            CreatePlayerFixtures(body, 36f, 60f); // 1.5× larger
 
             return body;
         }
@@ -57,8 +57,8 @@ namespace Bloop.Physics
             fixture.CollidesWith        = CollisionCategories.PlayerCollidesWith;
 
             // Foot sensor (slightly below body bottom, used for ground detection)
-            var footOffset  = new Vector2(0f, halfH + PhysicsManager.ToMeters(2f));
-            var footFixture = body.CreateRectangle(halfW * 1.6f, PhysicsManager.ToMeters(4f), 0f, footOffset);
+            var footOffset  = new Vector2(0f, halfH + PhysicsManager.ToMeters(3f));
+            var footFixture = body.CreateRectangle(halfW * 1.6f, PhysicsManager.ToMeters(6f), 0f, footOffset);
             footFixture.IsSensor            = true;
             footFixture.CollisionCategories = CollisionCategories.Player;
             footFixture.CollidesWith        = CollisionCategories.Terrain |

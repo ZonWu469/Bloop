@@ -20,8 +20,8 @@ namespace Bloop.Entities
     /// </summary>
     public class SilkWeaverSpider : ControllableEntity
     {
-        public const float WidthPx  = 20f;
-        public const float HeightPx = 14f;
+        public const float WidthPx  = 40f; // 2× larger
+        public const float HeightPx = 28f; // 2× larger
 
         public override string DisplayName    => "Silk Weaver Spider";
         public override float  ControlDuration => 16f;

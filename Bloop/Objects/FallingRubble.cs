@@ -26,7 +26,7 @@ namespace Bloop.Objects
         private const float ShatterDuration = 0.6f;
         private const float MaxFallTime     = 4f;
         private const float Damage          = 10f;
-        private const int   Size            = 14;
+        private const int   Size            = 28; // 2× larger
 
         private float _failsafeTimer;
         private Body? _bodyToRemove;
