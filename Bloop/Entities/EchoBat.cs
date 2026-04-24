@@ -147,6 +147,7 @@ namespace Bloop.Entities
             {
                 dir = Vector2.Normalize(dir);
                 SetVelocity(dir * MovementSpeed);
+                if (horiz != 0f) FacingDirection = MathF.Sign(horiz);
             }
             else
             {
@@ -320,7 +321,17 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawEchoBat(spriteBatch, assets, this);
+
+            // Pulse ring drawn before sprite so it appears behind the entity
+            if (PulseActive && PulseRadius > 0f)
+            {
+                float alpha = 1f - PulseRadius / PulseMaxRadius;
+                var pulseColor = new Color(180, 220, 255, (int)(alpha * 160));
+                GeometryBatch.DrawCircleOutline(spriteBatch, assets, PixelPosition, PulseRadius, pulseColor, 2);
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityEchoBat);
         }
 
         public override Rectangle GetBounds()
@@ -392,7 +403,9 @@ namespace Bloop.Entities
                 SetVelocity(Vector2.Zero);
                 return;
             }
-            SetVelocity(Vector2.Normalize(toTarget) * speed);
+            var vel = Vector2.Normalize(toTarget) * speed;
+            SetVelocity(vel);
+            if (vel.X != 0f) FacingDirection = MathF.Sign(vel.X);
         }
 
         private void UpdateFollowing(float dt)

@@ -103,6 +103,7 @@ namespace Bloop.Entities
                 var n  = Vector2.Normalize(dir);
                 float vy = MathF.Abs(vert) > 0.01f ? n.Y * MovementSpeed : physVY;
                 SetVelocity(new Vector2(n.X * MovementSpeed, vy));
+                if (horiz != 0f) FacingDirection = MathF.Sign(horiz);
             }
             else
                 SetVelocity(new Vector2(GetVelocityPixels().X * 0.6f, physVY));
@@ -184,7 +185,11 @@ namespace Bloop.Entities
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(Vector2.Normalize(toWander) * MovementSpeed * 0.5f);
+            {
+                var vel = Vector2.Normalize(toWander) * MovementSpeed * 0.5f;
+                SetVelocity(vel);
+                if (vel.X != 0f) FacingDirection = MathF.Sign(vel.X);
+            }
             else
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
         }
@@ -192,7 +197,17 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawLuminescentGlowworm(spriteBatch, assets, this);
+
+            // Flash effect drawn before sprite
+            if (FlashActive)
+            {
+                float flashAlpha = 1f - FlashRadius / FlashMaxRadius;
+                var flashColor = new Color(220, 255, 180, (int)(flashAlpha * 200));
+                GeometryBatch.DrawCircleApprox(spriteBatch, assets, PixelPosition, FlashRadius, flashColor, 16);
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityLuminescentGlowworm);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

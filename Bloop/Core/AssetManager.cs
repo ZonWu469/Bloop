@@ -44,6 +44,22 @@ namespace Bloop.Core
         /// <summary>Dead animation.</summary>
         public PlayerSpritesheet? PlayerDead        { get; private set; }
 
+        // ── Entity spritesheets ────────────────────────────────────────────────
+        /// <summary>Echo Bat animation spritesheet.</summary>
+        public EntitySpritesheet? EntityEchoBat             { get; private set; }
+        /// <summary>Silk Weaver Spider animation spritesheet.</summary>
+        public EntitySpritesheet? EntitySilkWeaverSpider    { get; private set; }
+        /// <summary>Chain Centipede animation spritesheet.</summary>
+        public EntitySpritesheet? EntityChainCentipede      { get; private set; }
+        /// <summary>Luminescent Glowworm animation spritesheet.</summary>
+        public EntitySpritesheet? EntityLuminescentGlowworm { get; private set; }
+        /// <summary>Deep Burrow Worm animation spritesheet.</summary>
+        public EntitySpritesheet? EntityDeepBurrowWorm      { get; private set; }
+        /// <summary>Blind Cave Salamander animation spritesheet.</summary>
+        public EntitySpritesheet? EntityBlindCaveSalamander { get; private set; }
+        /// <summary>Luminous Isopod animation spritesheet.</summary>
+        public EntitySpritesheet? EntityLuminousIsopod      { get; private set; }
+
         // ── Constructor ────────────────────────────────────────────────────────
         public AssetManager(GraphicsDevice graphicsDevice)
         {
@@ -93,6 +109,30 @@ namespace Bloop.Core
             PlayerControlling = LoadSheet("scing_controlling");
             PlayerStunned     = LoadSheet("scing_stunned");
             PlayerDead        = LoadSheet("scing_dead");
+        }
+
+        /// <summary>
+        /// Load all 7 entity animation spritesheets.
+        /// Reads Pixelorama JSON files from disk for metadata and loads compiled
+        /// PNG textures via the content pipeline.
+        /// </summary>
+        /// <param name="content">The game's ContentManager.</param>
+        /// <param name="contentRoot">Content.RootDirectory (e.g. "Content").</param>
+        public void LoadEntitySpritesheets(ContentManager content, string contentRoot)
+        {
+            EntitySpritesheet LoadSheet(string name)
+                => EntitySpritesheetLoader.Load(
+                    content,
+                    Path.Combine(contentRoot, "Data", "Entities", $"{name}.png.json"),
+                    $"Data/Entities/{name}");
+
+            EntityEchoBat             = LoadSheet("EchoBat");
+            EntitySilkWeaverSpider    = LoadSheet("SilkWeaverSpider");
+            EntityChainCentipede      = LoadSheet("ChainCentipede");
+            EntityLuminescentGlowworm = LoadSheet("LuminescentGlowworm");
+            EntityDeepBurrowWorm      = LoadSheet("DeepBurrowWorm");
+            EntityBlindCaveSalamander = LoadSheet("BlindCaveSalamander");
+            EntityLuminousIsopod      = LoadSheet("LuminousIsopod");
         }
 
         // ── Texture helpers ────────────────────────────────────────────────────

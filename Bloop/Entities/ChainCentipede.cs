@@ -97,6 +97,7 @@ namespace Bloop.Entities
                 var n  = Vector2.Normalize(dir);
                 float vy = MathF.Abs(vert) > 0.01f ? n.Y * MovementSpeed : physVY;
                 SetVelocity(new Vector2(n.X * MovementSpeed, vy));
+                if (horiz != 0f) FacingDirection = MathF.Sign(horiz);
             }
             else
                 SetVelocity(new Vector2(GetVelocityPixels().X * 0.7f, physVY));
@@ -194,7 +195,11 @@ namespace Bloop.Entities
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(new Vector2(MathF.Sign(toWander.X) * CeilingPatrolSpeed, GetVelocityPixels().Y));
+            {
+                float vx = MathF.Sign(toWander.X) * CeilingPatrolSpeed;
+                SetVelocity(new Vector2(vx, GetVelocityPixels().Y));
+                FacingDirection = MathF.Sign(toWander.X);
+            }
             else
             {
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
@@ -206,7 +211,17 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawChainCentipede(spriteBatch, assets, this);
+
+            // Pulse ring drawn before sprite
+            if (PulseActive)
+            {
+                float alpha = 1f - PulseRadius / PulseMaxRadius;
+                var pulseColor = new Color(255, 160, 40, (int)(alpha * 140));
+                GeometryBatch.DrawCircleOutline(spriteBatch, assets, PixelPosition, PulseRadius, pulseColor, 2);
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityChainCentipede);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

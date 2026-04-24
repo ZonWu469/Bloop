@@ -85,6 +85,7 @@ namespace Bloop.Entities
                 var n  = Vector2.Normalize(dir);
                 float vy = MathF.Abs(vert) > 0.01f ? n.Y * MovementSpeed : physVY;
                 SetVelocity(new Vector2(n.X * MovementSpeed, vy));
+                if (horiz != 0f) FacingDirection = MathF.Sign(horiz);
             }
             else
                 SetVelocity(new Vector2(GetVelocityPixels().X * 0.7f, physVY));
@@ -165,7 +166,11 @@ namespace Bloop.Entities
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(Vector2.Normalize(toWander) * MovementSpeed * 0.4f);
+            {
+                var vel = Vector2.Normalize(toWander) * MovementSpeed * 0.4f;
+                SetVelocity(vel);
+                if (vel.X != 0f) FacingDirection = MathF.Sign(vel.X);
+            }
             else
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
         }
@@ -173,7 +178,8 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawBlindCaveSalamander(spriteBatch, assets, this);
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityBlindCaveSalamander);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

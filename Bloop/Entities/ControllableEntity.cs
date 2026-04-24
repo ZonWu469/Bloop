@@ -85,6 +85,14 @@ namespace Bloop.Entities
         /// <summary>Movement speed in pixels per second while controlled.</summary>
         public abstract float MovementSpeed { get; }
 
+        // ── Facing direction ───────────────────────────────────────────────────
+        /// <summary>
+        /// +1 = facing right (sprite default), -1 = facing left.
+        /// Updated each frame by subclasses based on horizontal velocity.
+        /// Used by EntityRenderer to flip the spritesheet horizontally.
+        /// </summary>
+        public float FacingDirection { get; protected set; } = 1f;
+
         // ── Contact damage ─────────────────────────────────────────────────────
         /// <summary>Whether this entity damages the player on contact when idle (not controlled).</summary>
         public virtual bool DamagesPlayerOnContact => false;

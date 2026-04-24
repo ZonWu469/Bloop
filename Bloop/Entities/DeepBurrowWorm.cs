@@ -108,7 +108,10 @@ namespace Bloop.Entities
             float physVY = GetVelocityPixels().Y;
             var dir = new Vector2(horiz, 0f);
             if (dir.LengthSquared() > 0.01f)
+            {
                 SetVelocity(new Vector2(horiz * MovementSpeed, physVY));
+                FacingDirection = MathF.Sign(horiz);
+            }
             else
                 SetVelocity(new Vector2(GetVelocityPixels().X * 0.7f, physVY));
 
@@ -205,7 +208,11 @@ namespace Bloop.Entities
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(new Vector2(Math.Sign(toWander.X) * MovementSpeed * 0.5f, GetVelocityPixels().Y));
+            {
+                float vx = Math.Sign(toWander.X) * MovementSpeed * 0.5f;
+                SetVelocity(new Vector2(vx, GetVelocityPixels().Y));
+                FacingDirection = MathF.Sign(toWander.X);
+            }
             else
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
         }
@@ -213,7 +220,18 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawDeepBurrowWorm(spriteBatch, assets, this);
+
+            // Burrowing dust cloud drawn before sprite (or instead of sprite when fully burrowed)
+            if (IsBurrowing)
+            {
+                var dirtColor = new Color(120, 80, 40, 180);
+                GeometryBatch.DrawCircleApprox(spriteBatch, assets, PixelPosition,
+                    WidthPx * 0.6f, dirtColor, 8);
+                return; // don't draw sprite while underground
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityDeepBurrowWorm);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

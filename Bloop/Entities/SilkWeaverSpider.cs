@@ -106,6 +106,7 @@ namespace Bloop.Entities
             {
                 dir = Vector2.Normalize(dir);
                 SetVelocity(dir * MovementSpeed);
+                if (horiz != 0f) FacingDirection = MathF.Sign(horiz);
             }
             else
             {
@@ -219,7 +220,11 @@ namespace Bloop.Entities
 
             Vector2 toTarget = _wanderTarget - PixelPosition;
             if (toTarget.LengthSquared() > 4f)
-                SetVelocity(new Vector2(MathF.Sign(toTarget.X) * PatrolSpeed, GetVelocityPixels().Y));
+            {
+                float vx = MathF.Sign(toTarget.X) * PatrolSpeed;
+                SetVelocity(new Vector2(vx, GetVelocityPixels().Y));
+                FacingDirection = MathF.Sign(toTarget.X);
+            }
             else
             {
                 SetVelocity(Vector2.Zero);
@@ -231,7 +236,25 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawSilkWeaverSpider(spriteBatch, assets, this);
+
+            // Web trail drawn before sprite
+            if (IsControlled && Skill is { IsActive: true })
+            {
+                var pts = WebTrailPoints;
+                if (pts != null && pts.Count >= 2)
+                {
+                    var webColor = new Color(200, 200, 255, 80);
+                    for (int i = 0; i < pts.Count - 1; i++)
+                    {
+                        float alpha = (i / (float)pts.Count) * 0.5f;
+                        GeometryBatch.DrawLine(spriteBatch, assets, pts[i], pts[i + 1],
+                            new Color(webColor.R, webColor.G, webColor.B, (int)(alpha * 255)), 1f);
+                    }
+                }
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntitySilkWeaverSpider);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

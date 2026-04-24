@@ -104,6 +104,9 @@ namespace Bloop
             // Load player animation spritesheets (optional — renderer falls back gracefully if missing)
             try { Assets.LoadPlayerSpritesheets(Content, Content.RootDirectory); } catch { }
 
+            // Load entity animation spritesheets (optional — renderer falls back gracefully if missing)
+            try { Assets.LoadEntitySpritesheets(Content, Content.RootDirectory); } catch { }
+
             // Initialize lighting system at the actual backbuffer size
             int bbW = GraphicsDevice.PresentationParameters.BackBufferWidth;
             int bbH = GraphicsDevice.PresentationParameters.BackBufferHeight;

@@ -232,7 +232,9 @@ namespace Bloop.Entities
             if (_isScattered)
             {
                 _scatterTimer -= dt;
-                SetVelocity(new Vector2(_scatterDirection.X * ScatterSpeed, GetVelocityPixels().Y));
+                float scatterVx = _scatterDirection.X * ScatterSpeed;
+                SetVelocity(new Vector2(scatterVx, GetVelocityPixels().Y));
+                if (scatterVx != 0f) FacingDirection = MathF.Sign(scatterVx);
 
                 if (_scatterTimer <= 0f)
                 {
@@ -249,7 +251,11 @@ namespace Bloop.Entities
                 _regroupTimer -= dt;
                 Vector2 toRegroup = _regroupTarget - PixelPosition;
                 if (toRegroup.LengthSquared() > 4f)
-                    SetVelocity(Vector2.Normalize(toRegroup) * RegroupSpeed);
+                {
+                    var vel = Vector2.Normalize(toRegroup) * RegroupSpeed;
+                    SetVelocity(vel);
+                    if (vel.X != 0f) FacingDirection = MathF.Sign(vel.X);
+                }
                 else
                     SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
                 return;
@@ -284,7 +290,11 @@ namespace Bloop.Entities
 
             Vector2 toWander = _wanderTarget - PixelPosition;
             if (toWander.LengthSquared() > 4f)
-                SetVelocity(Vector2.Normalize(toWander) * MovementSpeed * 0.4f);
+            {
+                var vel = Vector2.Normalize(toWander) * MovementSpeed * 0.4f;
+                SetVelocity(vel);
+                if (vel.X != 0f) FacingDirection = MathF.Sign(vel.X);
+            }
             else
                 SetVelocity(new Vector2(0f, GetVelocityPixels().Y));
         }
@@ -375,7 +385,9 @@ namespace Bloop.Entities
                 return;
             }
 
-            SetVelocity(Vector2.Normalize(toPlayer) * CrawlBackSpeed);
+            var crawlVel = Vector2.Normalize(toPlayer) * CrawlBackSpeed;
+            SetVelocity(crawlVel);
+            if (crawlVel.X != 0f) FacingDirection = MathF.Sign(crawlVel.X);
         }
 
         // ── Throw helpers ──────────────────────────────────────────────────────
@@ -446,7 +458,33 @@ namespace Bloop.Entities
         public override void Draw(SpriteBatch spriteBatch, Bloop.Core.AssetManager assets)
         {
             if (IsDestroyed) return;
-            EntityRenderer.DrawLuminousIsopod(spriteBatch, assets, this);
+
+            // Glow surge ring drawn before sprite
+            if (GlowSurgeActive)
+            {
+                float surgeAlpha = 1f - GlowSurgeRadius / GlowSurgeMaxRadius;
+                var surgeColor = new Color(100, 220, 255, (int)(surgeAlpha * 180));
+                GeometryBatch.DrawCircleOutline(spriteBatch, assets, PixelPosition, GlowSurgeRadius, surgeColor, 2);
+            }
+
+            // Trajectory preview drawn before sprite
+            if (ShowTrajectory)
+            {
+                var pts = TrajectoryPoints;
+                if (pts != null && pts.Length >= 2)
+                {
+                    var trailColor = new Color(80, 200, 220, 100);
+                    for (int i = 0; i < pts.Length - 1; i++)
+                    {
+                        float alpha = (i / (float)pts.Length) * 0.6f;
+                        GeometryBatch.DrawLine(spriteBatch, assets, pts[i], pts[i + 1],
+                            new Color(trailColor.R, trailColor.G, trailColor.B, (int)(alpha * 255)), 1f);
+                    }
+                }
+            }
+
+            EntityRenderer.DrawEntity(spriteBatch, assets, this,
+                WidthPx, HeightPx, assets.EntityLuminousIsopod);
         }
 
         public override Rectangle GetBounds() => new Rectangle(
