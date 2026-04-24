@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "0PrVS/H0qEA=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\dbagn\\Desktop\\Progetti\\BloopGit\\SpritesheetGen\\SpritesheetGen.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\dbagn\\.nuget\\packages\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+    "C:\\Users\\dbagn\\.nuget\\packages\\system.drawing.common\\8.0.0\\system.drawing.common.8.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

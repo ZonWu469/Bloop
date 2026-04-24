@@ -4,10 +4,54 @@
   <Platform>DesktopGL</Platform>
   <Config />
   <SourceFiles>
-    <File>C:/Users/dbagn/Desktop/Progetti/Bloop/Bloop/Bloop/Content/Fonts/MenuFont.spritefont</File>
-    <File>C:/Users/dbagn/Desktop/Progetti/Bloop/Bloop/Bloop/Content/Fonts/GameFont.spritefont</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/BlindCaveSalamander.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/ChainCentipede.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/DeepBurrowWorm.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/EchoBat.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/LuminescentGlowworm.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/LuminousIsopod.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/Bases/SilkWeaverSpider.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/BlindCaveSalamander.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/ChainCentipede.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/DeepBurrowWorm.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/EchoBat.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/LuminescentGlowworm.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/LuminousIsopod.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Entities/SilkWeaverSpider.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_climbing.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_controlling.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_dead.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_idle.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_jumping.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_stunned.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Data/Player/scing_walking.png</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/GameFont.spritefont</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Fonts/MenuFont.spritefont</File>
+    <File>C:/Users/dbagn/Desktop/Progetti/BloopGit/Bloop/Content/Shaders/LightingEffect.fx</File>
   </SourceFiles>
   <DestFiles>
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
     <File xsi:nil="true" />
     <File xsi:nil="true" />
   </DestFiles>

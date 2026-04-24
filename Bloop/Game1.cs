@@ -101,6 +101,9 @@ namespace Bloop
             try { gameFont = Content.Load<SpriteFont>("Fonts/GameFont"); } catch { }
             Assets.LoadFonts(menuFont, gameFont);
 
+            // Load player animation spritesheets (optional — renderer falls back gracefully if missing)
+            try { Assets.LoadPlayerSpritesheets(Content, Content.RootDirectory); } catch { }
+
             // Initialize lighting system at the actual backbuffer size
             int bbW = GraphicsDevice.PresentationParameters.BackBufferWidth;
             int bbH = GraphicsDevice.PresentationParameters.BackBufferHeight;

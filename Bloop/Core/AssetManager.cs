@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.IO;
+using Bloop.Rendering;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace Bloop.Core
@@ -24,6 +27,22 @@ namespace Bloop.Core
         // ── Well-known 1×1 pixel textures ──────────────────────────────────────
         /// <summary>A single white pixel — tint it any color when drawing.</summary>
         public Texture2D Pixel { get; private set; } = null!;
+
+        // ── Player spritesheets ────────────────────────────────────────────────
+        /// <summary>Idle / default animation (also used for Crouching, ThrowingFlare).</summary>
+        public PlayerSpritesheet? PlayerIdle        { get; private set; }
+        /// <summary>Walking animation.</summary>
+        public PlayerSpritesheet? PlayerWalking     { get; private set; }
+        /// <summary>Jumping / falling / airborne animation.</summary>
+        public PlayerSpritesheet? PlayerJumping     { get; private set; }
+        /// <summary>Climbing / sliding / rappelling / swinging animation (drawn rotated −90°).</summary>
+        public PlayerSpritesheet? PlayerClimbing    { get; private set; }
+        /// <summary>Controlling an entity animation.</summary>
+        public PlayerSpritesheet? PlayerControlling { get; private set; }
+        /// <summary>Stunned animation.</summary>
+        public PlayerSpritesheet? PlayerStunned     { get; private set; }
+        /// <summary>Dead animation.</summary>
+        public PlayerSpritesheet? PlayerDead        { get; private set; }
 
         // ── Constructor ────────────────────────────────────────────────────────
         public AssetManager(GraphicsDevice graphicsDevice)
@@ -50,6 +69,30 @@ namespace Bloop.Core
         {
             MenuFont = menuFont;
             GameFont = gameFont;
+        }
+
+        /// <summary>
+        /// Load all 7 player animation spritesheets.
+        /// Reads Pixelorama JSON files from disk for metadata and loads compiled
+        /// PNG textures via the content pipeline.
+        /// </summary>
+        /// <param name="content">The game's ContentManager.</param>
+        /// <param name="contentRoot">Content.RootDirectory (e.g. "Content").</param>
+        public void LoadPlayerSpritesheets(ContentManager content, string contentRoot)
+        {
+            PlayerSpritesheet LoadSheet(string name)
+                => PlayerSpritesheetLoader.Load(
+                    content,
+                    Path.Combine(contentRoot, "Data", "Player", $"{name}.png.json"),
+                    $"Data/Player/{name}");
+
+            PlayerIdle        = LoadSheet("scing_idle");
+            PlayerWalking     = LoadSheet("scing_walking");
+            PlayerJumping     = LoadSheet("scing_jumping");
+            PlayerClimbing    = LoadSheet("scing_climbing");
+            PlayerControlling = LoadSheet("scing_controlling");
+            PlayerStunned     = LoadSheet("scing_stunned");
+            PlayerDead        = LoadSheet("scing_dead");
         }
 
         // ── Texture helpers ────────────────────────────────────────────────────

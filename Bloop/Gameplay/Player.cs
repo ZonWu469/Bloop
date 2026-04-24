@@ -160,9 +160,9 @@ namespace Bloop.Gameplay
         // so normal jumps — which rise and fall through the same apex — never
         // exceed the safe threshold, but long drops always do.
         private float _peakFallVelMs = 0f;
-        private const float SafeImpactMs   = 14f;  // ~1m free fall — normal jumps stay under this
-        private const float DamagePerMs    = 6f;   // 14 m/s above safe = 84 HP
-        private const float LethalImpactMs = 22f;  // extra-hard impact also stuns
+        private const float SafeImpactMs   = 11f;  // just above normal jump landing (~10.67 m/s); damage starts at ~3m drops
+        private const float DamagePerMs    = 10f;  // ~45 HP at 6m, ~90 HP at 10m, lethal at ~12m
+        private const float LethalImpactMs = 20f;  // ~10m drop; adds stun on top of near-lethal damage
 
         // ── Constructor ────────────────────────────────────────────────────────
 
