@@ -63,53 +63,15 @@ namespace Bloop.Objects
 
         public override void Draw(SpriteBatch sb, AssetManager assets)
         {
-            float t = AnimationClock.Time;
-            float basePulse = AnimationClock.Pulse(1.2f, _seed * 0.01f);
-
             _spores.Draw(sb, assets);
 
-            // 1. Dark base blob — carpet underlayer
-            OrganicPrimitives.DrawBlob(sb, assets, PixelPosition + new Vector2(0, 4),
-                12f, ColDark * 0.85f,
-                lobeCount: 4, time: t * 0.5f, wobbleAmp: 0.12f, seed: _seed);
-
-            // 2. Mid-layer bloom
-            OrganicPrimitives.DrawBlob(sb, assets, PixelPosition + new Vector2(0, 3),
-                9f, ColMid * 0.8f,
-                lobeCount: 5, time: t * 0.7f, wobbleAmp: 0.1f, seed: _seed + 11);
-
-            // 3. Frond stalks — each a short bezier quad with luminous tip
-            for (int i = 0; i < _frondCount; i++)
-            {
-                float phase    = NoiseHelpers.Hash01(_seed + i * 37) * MathHelper.TwoPi;
-                float tipPulse = AnimationClock.Pulse(1.2f + NoiseHelpers.Hash01(_seed + i * 13) * 0.6f, phase);
-                float bx = PixelPosition.X + NoiseHelpers.HashSigned(_seed + i * 37) * 10f;
-                float byBase = PixelPosition.Y + 2f;
-                float byTip  = byBase - 5f - NoiseHelpers.Hash01(_seed + i * 7) * 4f;
-                float ctrlX  = bx + NoiseHelpers.HashSigned(_seed + i * 53) * 2.5f;
-                float ctrlY  = (byBase + byTip) * 0.5f;
-
-                Color stalkCol = Color.Lerp(ColMid, ColBright, tipPulse * 0.4f);
-                OrganicPrimitives.DrawBezierQuad(sb, assets,
-                    new Vector2(bx, byBase),
-                    new Vector2(ctrlX, ctrlY),
-                    new Vector2(bx + NoiseHelpers.HashSigned(_seed + i) * 1.5f, byTip),
-                    stalkCol, 1.5f, 5);
-
-                // Luminous tip dot
-                float tipAlpha = 0.6f + tipPulse * 0.4f;
-                Color tipCol   = Color.Lerp(ColBright, ColGlow, tipPulse);
-                assets.DrawRect(sb,
-                    new Rectangle((int)bx - 1, (int)byTip - 1, 2, 2),
-                    tipCol * tipAlpha);
-            }
-
-            // 4. Soft center glow
-            OrganicPrimitives.DrawGradientDisk(sb, assets, PixelPosition,
-                rIn: 2f, rOut: 8f + basePulse * 3f,
-                innerColor: ColGlow * (0.35f + basePulse * 0.25f),
-                outerColor: ColGlow * 0f,
-                rings: 3, segments: 10);
+            var sheet = assets.ObjectPhosphorMoss;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? 40f / sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            sb.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
     }
 }

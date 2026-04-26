@@ -145,18 +145,18 @@ namespace Bloop.Objects
             switch (_state)
             {
                 case StalactiteState.Idle:
-                    DrawFang(spriteBatch, assets, PixelPosition, 0f, 0f);
-                    break;
-
                 case StalactiteState.Shaking:
-                    float shakeProgress = 1f - (_timer / ShakeDuration);
-                    DrawFang(spriteBatch, assets,
-                        new Vector2(PixelPosition.X + _shakeOffset, PixelPosition.Y),
-                        shakeProgress, AnimationClock.Time);
-                    break;
-
                 case StalactiteState.Falling:
-                    DrawFang(spriteBatch, assets, PixelPosition, 0f, AnimationClock.Time);
+                    var sheet = assets.ObjectFallingStalactite;
+                    if (sheet == null) break;
+                    Vector2 drawPos = _state == StalactiteState.Shaking
+                        ? new Vector2(PixelPosition.X + _shakeOffset, PixelPosition.Y)
+                        : PixelPosition;
+                    int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+                    var src    = sheet.GetSourceRect(frame);
+                    float scale = sheet.FrameHeight > 0 ? Height / (float)sheet.FrameHeight : 1f;
+                    var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+                    spriteBatch.Draw(sheet.Texture, drawPos, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
                     break;
 
                 case StalactiteState.Shattered:
@@ -173,52 +173,6 @@ namespace Bloop.Objects
         {
             // Cheap deterministic skip using timer fractional part
             return (AnimationClock.Time * 1000f % 1f) < (probPerSec * dt);
-        }
-
-        private void DrawFang(SpriteBatch sb, AssetManager assets,
-            Vector2 pos, float shakeProgress, float t)
-        {
-            int cx = (int)pos.X;
-            int cy = (int)pos.Y;
-            int top = cy - Height / 2;
-
-            // Layer 1: dark shadow offset
-            GeometryBatch.DrawTriangleSolid(sb, assets,
-                new Vector2(cx - Width / 2f + 1, top + 1),
-                new Vector2(cx + Width / 2f + 1, top + 1),
-                new Vector2(cx + 1, cy + Height / 2f + 1),
-                ColDark);
-
-            // Layer 2: stone body — tapered fang shape
-            GeometryBatch.DrawTriangleSolid(sb, assets,
-                new Vector2(cx - Width / 2f, top),
-                new Vector2(cx + Width / 2f, top),
-                new Vector2(cx, cy + Height / 2f),
-                ColBase);
-
-            // Layer 3: highlight ridge (left face catches cave ambient)
-            GeometryBatch.DrawTriangleSolid(sb, assets,
-                new Vector2(cx - Width / 2f, top),
-                new Vector2(cx - Width / 4f, top),
-                new Vector2(cx - Width / 4f, cy + Height / 4f),
-                ColHi * 0.6f);
-
-            // Ceiling anchor plug
-            assets.DrawRect(sb, new Rectangle(cx - Width / 2 + 1, top, Width - 2, 4), ColBase);
-
-            // Veins — pulse faster as shakeProgress increases
-            if (shakeProgress > 0f || t > 0f)
-            {
-                float vpulse = t > 0f ? AnimationClock.Pulse(4f + shakeProgress * 8f) : 0f;
-                Color vc = ColVein * (shakeProgress * 0.7f + vpulse * 0.5f);
-                if (vc.A > 5)
-                {
-                    OrganicPrimitives.DrawVeinNetwork(sb, assets,
-                        new Vector2(cx, cy - Height / 4f), vc,
-                        branchCount: 3, length: Height * 0.35f,
-                        thickness: 1f, time: t, seed: _seed);
-                }
-            }
         }
 
         private void StartShaking()

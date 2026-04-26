@@ -53,72 +53,13 @@ namespace Bloop.Objects
 
         public override void Draw(SpriteBatch spriteBatch, AssetManager assets)
         {
-            float t     = AnimationClock.Time;
-            float pulse = AnimationClock.Pulse(3f);
-            int   seed  = (int)(PixelPosition.X * 7 + PixelPosition.Y * 11);
-
-            // 1. Outer gradient halo ring (rotating CW)
-            float halo1R = 20f + pulse * 4f;
-            OrganicPrimitives.DrawGradientDisk(spriteBatch, assets, PixelPosition,
-                rIn: halo1R - 4f, rOut: halo1R,
-                innerColor: ColHalo1 * (0.22f + pulse * 0.15f),
-                outerColor: ColHalo1 * 0f,
-                rings: 3, segments: 12);
-
-            // 2. Inner gradient halo ring (counter-rotating, offset color)
-            float halo2R = 13f + pulse * 2f;
-            OrganicPrimitives.DrawGradientDisk(spriteBatch, assets, PixelPosition,
-                rIn: halo2R - 3f, rOut: halo2R,
-                innerColor: ColHalo2 * (0.18f + pulse * 0.12f),
-                outerColor: ColHalo2 * 0f,
-                rings: 3, segments: 10);
-
-            // 3. Center glow
-            OrganicPrimitives.DrawGradientDisk(spriteBatch, assets, PixelPosition,
-                rIn: 2f, rOut: 8f + pulse * 3f,
-                innerColor: ColGlow * (0.35f + pulse * 0.3f),
-                outerColor: ColGlow * 0f,
-                rings: 4, segments: 10);
-
-            // 4. Faceted gem core — 6-sided
-            float gemR = 6f + pulse * 1.5f;
-            OrganicPrimitives.DrawFacetedGem(spriteBatch, assets, PixelPosition,
-                radius: gemR, facetCount: 6,
-                baseColor: ColCore, highlight: ColOuter,
-                time: t, seed: seed);
-
-            // 5. Three orbiting sparks with short motion-trail lines
-            int sparkCount = 3;
-            for (int s = 0; s < sparkCount; s++)
-            {
-                float ang  = t * 1.5f * (s % 2 == 0 ? 1f : -0.75f) + s * MathHelper.TwoPi / sparkCount;
-                float orbit = 13f + pulse * 3f;
-                Vector2 sp  = PixelPosition + new Vector2(MathF.Cos(ang) * orbit, MathF.Sin(ang) * orbit * 0.65f);
-
-                // Trail line behind spark
-                float ang2 = ang - 0.35f * (s % 2 == 0 ? 1f : -0.75f);
-                Vector2 sp2 = PixelPosition + new Vector2(MathF.Cos(ang2) * orbit, MathF.Sin(ang2) * orbit * 0.65f);
-                GeometryBatch.DrawLine(spriteBatch, assets, sp2, sp,
-                    ColSpark * (0.25f + pulse * 0.15f), 1.5f);
-
-                float spAlpha = 0.5f + AnimationClock.Pulse(2.5f, s * 0.5f) * 0.5f;
-                assets.DrawRect(spriteBatch,
-                    new Rectangle((int)sp.X - 1, (int)sp.Y - 1, 2, 2),
-                    ColSpark * spAlpha);
-            }
-
-            // 6. Cardinal light rays
-            float rayLen   = 6f + pulse * 5f;
-            float rayAlpha = 0.2f + pulse * 0.2f;
-            for (int d = 0; d < 4; d++)
-            {
-                float a   = d * MathHelper.PiOver2 + t * 0.3f;
-                Vector2 dir = new Vector2(MathF.Cos(a), MathF.Sin(a));
-                GeometryBatch.DrawLine(spriteBatch, assets,
-                    PixelPosition + dir * (gemR + 1f),
-                    PixelPosition + dir * (gemR + 1f + rayLen),
-                    ColOuter * rayAlpha, 1.5f);
-            }
+            var sheet = assets.ObjectResonanceShard;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? SensorSize / (float)sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            spriteBatch.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

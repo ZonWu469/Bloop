@@ -161,41 +161,13 @@ namespace Bloop.Objects
                 return;
             }
 
-            float t     = AnimationClock.Time;
-            float pulse = AnimationClock.Pulse(2.2f, (_seed & 0xFF) * 0.003f);
-
-            // 1. Ambient glow halo
-            OrganicPrimitives.DrawGradientDisk(sb, assets, PixelPosition,
-                rIn: 4f, rOut: 18f + pulse * 4f,
-                innerColor: _glowCol * (0.1f + pulse * 0.1f),
-                outerColor: _glowCol * 0f,
-                rings: 4, segments: 10);
-
-            // 2. Cluster of faceted gem shards at seeded angles
-            for (int i = 0; i < _shardCount; i++)
-            {
-                float sa   = (i / (float)_shardCount) * MathHelper.TwoPi
-                             + NoiseHelpers.HashSigned(_seed + i * 7) * 0.5f;
-                float dist = 2f + NoiseHelpers.Hash01(_seed + i * 13) * 4f;
-                float sr   = 3.5f + NoiseHelpers.Hash01(_seed + i * 29) * 3f;
-                int   fc   = 4 + (i % 3);
-                Vector2 sc = PixelPosition + new Vector2(MathF.Cos(sa), MathF.Sin(sa)) * dist;
-
-                // Light cascade: a bright highlight travels up each shard on staggered phase
-                float cascadePhase = t * 1.5f + i * (MathHelper.TwoPi / _shardCount);
-                float cascade      = MathF.Max(0f, MathF.Sin(cascadePhase));
-                Color shardCol  = Color.Lerp(_edgeCol, _coreCol, 0.35f + pulse * 0.2f);
-                Color shardHi   = Color.Lerp(shardCol, _hiCol, cascade * 0.7f);
-                OrganicPrimitives.DrawFacetedGem(sb, assets, sc, sr, fc,
-                    shardCol, shardHi, t + i * 0.4f, _seed + i * 17);
-            }
-
-            // 3. Core bright center
-            OrganicPrimitives.DrawGradientDisk(sb, assets, PixelPosition,
-                rIn: 0.5f, rOut: 3f + pulse * 1.5f,
-                innerColor: Color.Lerp(_coreCol, Color.White, pulse * 0.5f),
-                outerColor: _coreCol * 0.3f,
-                rings: 3, segments: 8);
+            var sheet = assets.ObjectCrystalCluster;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? SensorSize / (float)sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            sb.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
 
         public override void OnPlayerContact(Player player)

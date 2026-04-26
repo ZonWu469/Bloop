@@ -47,6 +47,18 @@ namespace Bloop.Core
         /// <summary>Dead animation.</summary>
         public PlayerSpritesheet? PlayerDead        { get; private set; }
 
+        // ── World object spritesheets ──────────────────────────────────────────
+        public EntitySpritesheet? ObjectBlindFish         { get; private set; }
+        public EntitySpritesheet? ObjectCaveLichen        { get; private set; }
+        public EntitySpritesheet? ObjectCrystalCluster    { get; private set; }
+        public EntitySpritesheet? ObjectFallingStalactite { get; private set; }
+        public EntitySpritesheet? ObjectVentFlower        { get; private set; }
+        public EntitySpritesheet? ObjectFlareObject       { get; private set; }
+        public EntitySpritesheet? ObjectIonStone          { get; private set; }
+        public EntitySpritesheet? ObjectPhosphorMoss      { get; private set; }
+        public EntitySpritesheet? ObjectResonanceShard    { get; private set; }
+        public EntitySpritesheet? ObjectRootClump         { get; private set; }
+
         // ── Entity spritesheets ────────────────────────────────────────────────
         /// <summary>Echo Bat animation spritesheet.</summary>
         public EntitySpritesheet? EntityEchoBat             { get; private set; }
@@ -112,6 +124,29 @@ namespace Bloop.Core
             PlayerControlling = LoadSheet("scing_controlling");
             PlayerStunned     = LoadSheet("scing_stunned");
             PlayerDead        = LoadSheet("scing_dead");
+        }
+
+        /// <summary>
+        /// Load all 10 world object animation spritesheets.
+        /// </summary>
+        public void LoadObjectSpritesheets(ContentManager content, string contentRoot)
+        {
+            EntitySpritesheet LoadSheet(string name)
+                => EntitySpritesheetLoader.Load(
+                    content,
+                    Path.Combine(contentRoot, "Data", "Objects", $"{name}.png.json"),
+                    $"Data/Objects/{name}");
+
+            ObjectBlindFish         = LoadSheet("BlindFish");
+            ObjectCaveLichen        = LoadSheet("CaveLichen");
+            ObjectCrystalCluster    = LoadSheet("CrystalCluster");
+            ObjectFallingStalactite = LoadSheet("FallingStalactite");
+            ObjectVentFlower        = LoadSheet("VentFlower");
+            ObjectFlareObject       = LoadSheet("FlareObject");
+            ObjectIonStone          = LoadSheet("IonStone");
+            ObjectPhosphorMoss      = LoadSheet("PhosphorMoss");
+            ObjectResonanceShard    = LoadSheet("ResonanceShard");
+            ObjectRootClump         = LoadSheet("RootClump");
         }
 
         /// <summary>

@@ -92,7 +92,14 @@ namespace Bloop.Objects
         public override void Draw(SpriteBatch spriteBatch, AssetManager assets)
         {
             if (!IsActive || IsDestroyed) return;
-            WorldObjectRenderer.DrawFlare(spriteBatch, assets, PixelPosition, _remainingLife, _hasLanded);
+
+            var sheet = assets.ObjectFlareObject;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % MathHelper.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? 12f / sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            spriteBatch.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
 
         /// <summary>Force-expire this flare immediately (called on level unload).</summary>

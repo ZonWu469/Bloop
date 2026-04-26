@@ -109,11 +109,6 @@
 /processorParam:TextureFormat=Color
 /build:Data/Objects/BlindFish.png
 
-#begin Data/Objects/BlindFish.png.json
-/importer:
-/processor:
-/build:Data/Objects/BlindFish.png.json
-
 #begin Data/Objects/CaveLichen.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -125,11 +120,6 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Data/Objects/CaveLichen.png
-
-#begin Data/Objects/CaveLichen.png.json
-/importer:
-/processor:
-/build:Data/Objects/CaveLichen.png.json
 
 #begin Data/Objects/CrystalCluster.png
 /importer:TextureImporter
@@ -143,11 +133,6 @@
 /processorParam:TextureFormat=Color
 /build:Data/Objects/CrystalCluster.png
 
-#begin Data/Objects/CrystalCluster.png.json
-/importer:
-/processor:
-/build:Data/Objects/CrystalCluster.png.json
-
 #begin Data/Objects/FallingStalactite.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -159,11 +144,6 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Data/Objects/FallingStalactite.png
-
-#begin Data/Objects/FallingStalactite.png.json
-/importer:
-/processor:
-/build:Data/Objects/FallingStalactite.png.json
 
 #begin Data/Objects/FlareObject.png
 /importer:TextureImporter
@@ -177,11 +157,6 @@
 /processorParam:TextureFormat=Color
 /build:Data/Objects/FlareObject.png
 
-#begin Data/Objects/FlareObject.png.json
-/importer:
-/processor:
-/build:Data/Objects/FlareObject.png.json
-
 #begin Data/Objects/IonStone.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -193,11 +168,6 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Data/Objects/IonStone.png
-
-#begin Data/Objects/IonStone.png.json
-/importer:
-/processor:
-/build:Data/Objects/IonStone.png.json
 
 #begin Data/Objects/PhosphorMoss.png
 /importer:TextureImporter
@@ -211,11 +181,6 @@
 /processorParam:TextureFormat=Color
 /build:Data/Objects/PhosphorMoss.png
 
-#begin Data/Objects/PhosphorMoss.png.json
-/importer:
-/processor:
-/build:Data/Objects/PhosphorMoss.png.json
-
 #begin Data/Objects/ResonanceShard.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -227,11 +192,6 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Data/Objects/ResonanceShard.png
-
-#begin Data/Objects/ResonanceShard.png.json
-/importer:
-/processor:
-/build:Data/Objects/ResonanceShard.png.json
 
 #begin Data/Objects/RootClump.png
 /importer:TextureImporter
@@ -245,11 +205,6 @@
 /processorParam:TextureFormat=Color
 /build:Data/Objects/RootClump.png
 
-#begin Data/Objects/RootClump.png.json
-/importer:
-/processor:
-/build:Data/Objects/RootClump.png.json
-
 #begin Data/Objects/VentFlower.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -261,11 +216,6 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Data/Objects/VentFlower.png
-
-#begin Data/Objects/VentFlower.png.json
-/importer:
-/processor:
-/build:Data/Objects/VentFlower.png.json
 
 #begin Data/Player/scing_climbing.png
 /importer:TextureImporter

@@ -150,14 +150,18 @@ namespace Bloop.Objects
             if (IsDestroyed) return;
 
             _dust.Draw(spriteBatch, assets);
-            int   tileHash           = (int)(PixelPosition.X * 3 + PixelPosition.Y * 7);
-            float idleWarningFraction = _idleTimer / IdleTimeout;
 
-            WorldObjectRenderer.DrawRootClump(
-                spriteBatch, assets,
-                PixelPosition, _heightPx,
-                _isRetracting, _retractProgress,
-                idleWarningFraction, tileHash);
+            var sheet = assets.ObjectRootClump;
+            if (sheet == null) return;
+
+            float visibleH = _heightPx * (1f - _retractProgress);
+            if (visibleH <= 0f) return;
+
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? visibleH / sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            spriteBatch.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
 
         // ── Bounds ─────────────────────────────────────────────────────────────

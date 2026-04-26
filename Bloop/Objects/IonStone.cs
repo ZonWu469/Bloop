@@ -64,51 +64,15 @@ namespace Bloop.Objects
 
         public override void Draw(SpriteBatch sb, AssetManager assets)
         {
-            float t = AnimationClock.Time;
-            float pulse = AnimationClock.Pulse(2.5f, _seed * 0.001f);
-
             _arcs.Draw(sb, assets);
 
-            // 1. Outer glow halo
-            float glowR = 14f + pulse * 5f;
-            OrganicPrimitives.DrawGradientDisk(sb, assets, PixelPosition,
-                rIn: 4f, rOut: glowR,
-                innerColor: ColGlow * (0.25f + pulse * 0.2f),
-                outerColor: ColGlow * 0f,
-                rings: 4, segments: 10);
-
-            // 2. Faceted gem shell — irregular polygon, violet base
-            OrganicPrimitives.DrawFacetedGem(sb, assets, PixelPosition,
-                radius: 8f, facetCount: 7,
-                baseColor: ColBase, highlight: ColHi,
-                time: t, seed: _seed);
-
-            // 3. Inner core glow
-            float coreR = 3f + pulse * 1.5f;
-            OrganicPrimitives.DrawGradientDisk(sb, assets, PixelPosition,
-                rIn: 0.5f, rOut: coreR,
-                innerColor: Color.Lerp(ColCore, Color.White, pulse * 0.5f),
-                outerColor: ColCore * 0.4f,
-                rings: 3, segments: 8);
-
-            // 4. Internal micro-lightning arcs (2–3 noisy lines, short-lived)
-            int arcCount = 2 + (int)(pulse * 1.5f);
-            for (int i = 0; i < arcCount; i++)
-            {
-                float arcPhase = i * 0.33f;
-                float arcLife  = t * 3f + arcPhase;
-                if ((arcLife % 1f) < 0.35f)
-                {
-                    float a0 = NoiseHelpers.Hash01(_seed + i * 13) * MathHelper.TwoPi;
-                    float a1 = a0 + NoiseHelpers.HashSigned(_seed + i * 29) * 1.2f;
-                    float r  = 3.5f + NoiseHelpers.Hash01(_seed + i * 7) * 3f;
-                    Vector2 from = PixelPosition + new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * 1f;
-                    Vector2 to   = PixelPosition + new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * r;
-                    OrganicPrimitives.DrawNoisyLine(sb, assets, from, to,
-                        ColArc * (0.6f + pulse * 0.4f), 1f,
-                        amplitude: 1.2f, frequency: 12f, time: t + i, seed: _seed + i, segments: 4);
-                }
-            }
+            var sheet = assets.ObjectIonStone;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? 48f / sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            sb.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
     }
 }

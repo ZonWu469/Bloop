@@ -78,8 +78,13 @@ namespace Bloop.Objects
 
         protected override void DrawCollectible(SpriteBatch spriteBatch, AssetManager assets)
         {
-            WorldObjectRenderer.DrawBlindFish(spriteBatch, assets, PixelPosition,
-                IsPoisonous, Rarity, _proximity01);
+            var sheet = assets.ObjectBlindFish;
+            if (sheet == null) return;
+            int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+            var src    = sheet.GetSourceRect(frame);
+            float scale = sheet.FrameHeight > 0 ? ObjectHeight / (float)sheet.FrameHeight : 1f;
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+            spriteBatch.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         }
 
         public override Rectangle GetBounds() => new Rectangle(

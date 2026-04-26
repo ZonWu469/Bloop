@@ -120,12 +120,16 @@ namespace Bloop.Objects
         public override void Draw(SpriteBatch spriteBatch, AssetManager assets)
         {
             _heat.Draw(spriteBatch, assets);
-            WorldObjectRenderer.DrawVentFlower(
-                spriteBatch, assets,
-                PixelPosition,
-                _cooldownTimer > 0f,
-                _standingTime / RefillTime,
-                _playerInZone);
+
+            var sheet = assets.ObjectVentFlower;
+            if (sheet != null)
+            {
+                int frame  = (int)(AnimationClock.Time * sheet.Fps) % Math.Max(1, sheet.FrameCount);
+                var src    = sheet.GetSourceRect(frame);
+                float scale = sheet.FrameHeight > 0 ? VisualHeight / (float)sheet.FrameHeight : 1f;
+                var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+                spriteBatch.Draw(sheet.Texture, PixelPosition, src, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
+            }
         }
 
         // ── Bounds ─────────────────────────────────────────────────────────────
