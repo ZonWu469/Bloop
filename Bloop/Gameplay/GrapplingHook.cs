@@ -217,6 +217,25 @@ namespace Bloop.Gameplay
 
                 _currentRopeLengthPixels = PhysicsManager.ToPixels(ropeLength);
 
+                // ── Bug #2 fix: correct player position if they exceeded rope length ──
+                // During the remaining sub-steps between OnHookCollision and this Update(),
+                // the player may have fallen further, exceeding the intended rope length.
+                // Teleport the player back to the correct distance from the anchor.
+                float currentDist = Vector2.Distance(_pendingAnchorPos, _ownerPlayer.Body.Position);
+                float maxDistMeters = PhysicsManager.ToMeters(_currentRopeLengthPixels);
+                if (currentDist > maxDistMeters + 0.01f)
+                {
+                    Vector2 toAnchor = _pendingAnchorPos - _ownerPlayer.Body.Position;
+                    toAnchor.Normalize();
+                    // Place player at exactly the rope length distance from anchor
+                    _ownerPlayer.Body.Position = _pendingAnchorPos - toAnchor * maxDistMeters;
+                    // Zero velocity toward/away from anchor to prevent immediate re-stretch
+                    Vector2 vel = _ownerPlayer.Body.LinearVelocity;
+                    float radialComponent = Vector2.Dot(vel, -toAnchor);
+                    if (radialComponent > 0f)
+                        _ownerPlayer.Body.LinearVelocity = vel + toAnchor * radialComponent;
+                }
+
                 // RopeJoint constrains only the MAXIMUM distance (one-sided, like a real rope).
                 // A DistanceJoint would force the exact length, trapping the player against
                 // the ground and fighting any reel-in attempt.
@@ -232,7 +251,12 @@ namespace Bloop.Gameplay
                 // Destroy the hook projectile body — anchor body takes its place
                 DestroyHookBody();
 
-                _ownerPlayer.SetState(PlayerState.Swinging);
+                // ── Grounded grapple fix: don't force Swinging when grounded ──
+                // If the player is on the ground when the hook anchors, leave them
+                // in their current state (Idle/Walking) so they can walk freely
+                // within the rope radius. Swinging is only forced when airborne.
+                if (!_ownerPlayer.IsGrounded)
+                    _ownerPlayer.SetState(PlayerState.Swinging);
 
                 // NOTE: No yank impulse applied here.
                 // The player stays where they are when the hook anchors.
@@ -256,18 +280,21 @@ namespace Bloop.Gameplay
                 _joint.MaxLength = System.Math.Max(0.1f,
                     PhysicsManager.ToMeters(remainingLength));
 
-                // If external code moved the player out of Swinging, restore it so rope
-                // climbing and swing controls keep working.
-                // Exceptions: don't restore if the player is grounded (they landed while
-                // anchored — let Idle/Walking stand), Stunned, Dead, or in Launching.
-                if (_ownerPlayer.State != PlayerState.Swinging &&
-                    _ownerPlayer.State != PlayerState.Stunned &&
-                    _ownerPlayer.State != PlayerState.Dead &&
-                    _ownerPlayer.State != PlayerState.Launching &&
-                    !(_ownerPlayer.IsGrounded &&
-                      (_ownerPlayer.State == PlayerState.Idle ||
-                       _ownerPlayer.State == PlayerState.Walking ||
-                       _ownerPlayer.State == PlayerState.Crouching)))
+                // ── Grounded grapple fix: keep attached while grounded ────────────
+                // The player can walk freely within the rope radius while grounded.
+                // Only restore Swinging state if the player is airborne.
+                // When grounded, leave the state as-is (Idle/Walking/Crouching) so
+                // normal ground movement works, but keep the rope attached so it's
+                // ready for the next swing.
+                if (_ownerPlayer.IsGrounded)
+                {
+                    // Don't force Swinging state — let the player walk.
+                    // The rope stays attached and will swing them when they jump/fall.
+                }
+                else if (_ownerPlayer.State != PlayerState.Swinging &&
+                         _ownerPlayer.State != PlayerState.Stunned &&
+                         _ownerPlayer.State != PlayerState.Dead &&
+                         _ownerPlayer.State != PlayerState.Launching)
                 {
                     _ownerPlayer.SetState(PlayerState.Swinging);
                 }

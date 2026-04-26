@@ -90,9 +90,13 @@ namespace Bloop.Gameplay
         /// <summary>Remaining cooldown time before another wall jump is allowed.</summary>
         private float _wallJumpCooldownTimer = 0f;
 
-        // ── Wall detection hysteresis (holds flags 1 extra frame after losing contact) ─
+        // ── Wall detection hysteresis (timer-based, prevents oscillation) ──────────
         private bool _prevTouchingWallLeft  = false;
         private bool _prevTouchingWallRight = false;
+        /// <summary>Timer (seconds) since last wall contact — used for hysteresis.</summary>
+        private float _wallHysteresisTimer = 0f;
+        /// <summary>How long to hold the wall flag after losing contact (80ms).</summary>
+        private const float WallHysteresisDuration = 0.08f;
 
         // ── Wall-cling coyote time (allows wall-jump briefly after releasing cling) ─
         private float _wallClingCoyoteTimer = 0f;
@@ -175,6 +179,10 @@ namespace Bloop.Gameplay
 
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+            // ── Wall hysteresis timer tick ─────────────────────────────────────
+            if (_wallHysteresisTimer > 0f)
+                _wallHysteresisTimer -= dt;
+
             // ── Per-frame wall detection via raycasts ──────────────────────────
             UpdateWallDetection();
 
@@ -190,6 +198,13 @@ namespace Bloop.Gameplay
                     _wallSlideDamping = MathHelper.Lerp(0f, WallSlideMaxDamping,
                         MathHelper.Clamp(_wallSlideTimer / WallSlideRampTime, 0f, 1f));
                     _player.Body.LinearDamping = _wallSlideDamping;
+
+                    // ── Bug #4 fix: inward wall-push force ─────────────────────
+                    // Apply a small horizontal force pushing the player into the wall
+                    // to prevent bouncing away from the wall surface during slide.
+                    float pushDir = _player.IsTouchingWallLeft ? -1f : 1f;
+                    _player.Body.ApplyForce(PhysicsManager.ToMeters(
+                        new Vector2(pushDir * MoveForce * 0.15f, 0f)));
 
                     float fallSpeed = Math.Abs(PhysicsManager.ToPixels(_player.Body.LinearVelocity.Y));
                     if (fallSpeed < WallClingVelocityThreshold || _wallSlideTimer > WallClingTimerThreshold)
@@ -209,6 +224,38 @@ namespace Bloop.Gameplay
             {
                 _wallSlideTimer   = 0f;
                 _wallSlideDamping = 0f;
+            }
+
+            // ── Bug #4 fix: climb entry detection ──────────────────────────────
+            // If the player is falling and touching a Climbable surface, pressing C
+            // transitions directly to Climbing state (no need to wall-slide first).
+            if (_tileMap != null && _player.State == PlayerState.Falling && _input.IsClimbHeld())
+            {
+                if (_player.IsTouchingWall)
+                {
+                    // Check if the wall tile is actually climbable
+                    Vector2 pos = _player.PixelPosition;
+                    int ts = TileMap.TileSize;
+                    int tx = _player.IsTouchingWallLeft
+                        ? (int)((pos.X - Player.WidthPx / 2f - 2f) / ts)
+                        : (int)((pos.X + Player.WidthPx / 2f + 2f) / ts);
+                    int ty = (int)(pos.Y / ts);
+
+                    if (tx >= 0 && tx < _tileMap.Width && ty >= 0 && ty < _tileMap.Height)
+                    {
+                        TileType tile = _tileMap.GetTile(tx, ty);
+                        if (TileProperties.IsClimbable(tile) || TileProperties.IsSolid(tile))
+                        {
+                            _player.Body.IgnoreGravity = false;
+                            _player.Body.LinearDamping = 8f;
+                            _player.Body.LinearVelocity = new Vector2(
+                                _player.Body.LinearVelocity.X * 0.3f, 0f);
+                            _player.SetState(PlayerState.Climbing);
+                            _wallSlideTimer = 0f;
+                            _wallSlideDamping = 0f;
+                        }
+                    }
+                }
             }
 
             // ── Wall cling controls ────────────────────────────────────────────
@@ -259,6 +306,16 @@ namespace Bloop.Gameplay
                     _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, -WallClimbSpeed));
                     // Mantle over the top when head meets a solid floor tile above
                     CheckLedgeGrabFromCling();
+                    return;
+                }
+                // ── Bug #5 fix: climb down while wall-clinging ─────────────────
+                else if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
+                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down))
+                {
+                    // Climb downward while clinging
+                    _player.Body.IgnoreGravity = false;
+                    _player.Body.LinearDamping = 8f;
+                    _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, WallClimbSpeed * 0.8f));
                     return;
                 }
                 else
@@ -423,25 +480,39 @@ namespace Bloop.Gameplay
             // ── Swinging movement ──────────────────────────────────────────────
             if (_player.State == PlayerState.Swinging)
             {
-                _player.ActiveRopeAnchorPixels = _grapple.AnchorPixelPos;
-                _player.IsRopeClimbing = !_player.IsGrounded &&
-                    (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
-                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up) ||
-                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
-                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down));
+                // ── Grounded grapple fix: keep attached while grounded ────────────
+                // When grounded with a grapple attached, set the rope rendering data
+                // and fall through to normal ground movement. The player can walk
+                // freely within the rope radius. The grapple stays attached so it's
+                // ready for the next swing when they jump/fall off a ledge.
+                if (_player.IsGrounded)
+                {
+                    _player.ActiveRopeAnchorPixels = _grapple.AnchorPixelPos;
+                    _player.IsRopeClimbing = false;
+                    // Fall through to normal ground movement below
+                }
+                else
+                {
+                    _player.ActiveRopeAnchorPixels = _grapple.AnchorPixelPos;
+                    _player.IsRopeClimbing = !_player.IsGrounded &&
+                        (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
+                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up) ||
+                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
+                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down));
 
-                // Apply small horizontal force to swing direction
-                float swingForce = _input.GetHorizontalAxis() * MoveForce * 0.4f;
-                _player.Body.ApplyForce(PhysicsManager.ToMeters(new Vector2(swingForce, 0f)));
+                    // Apply small horizontal force to swing direction
+                    float swingForce = _input.GetHorizontalAxis() * MoveForce * 0.4f;
+                    _player.Body.ApplyForce(PhysicsManager.ToMeters(new Vector2(swingForce, 0f)));
 
-                // Climb the rope: W/Up shortens it (reel in), S/Down extends it
-                if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
-                    _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up))
-                    _grapple.AdjustLength(-ClimbSpeed * dt);
-                else if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
-                         _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down))
-                    _grapple.AdjustLength(+ClimbSpeed * dt);
-                return;
+                    // Climb the rope: W/Up shortens it (reel in), S/Down extends it
+                    if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
+                        _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up))
+                        _grapple.AdjustLength(-ClimbSpeed * dt);
+                    else if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
+                             _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down))
+                        _grapple.AdjustLength(+ClimbSpeed * dt);
+                    return;
+                }
             }
 
             // Not on any rope — clear the rope rendering data
@@ -676,6 +747,9 @@ namespace Bloop.Gameplay
         /// Cast short horizontal rays from the player center to detect wall contacts.
         /// This replaces the callback-based counter approach which was prone to drift
         /// when the player body was teleported or contacts changed rapidly.
+        ///
+        /// Uses timer-based hysteresis (80ms) to prevent oscillation when the player
+        /// is near a wall edge or diagonal corner.
         /// </summary>
         private void UpdateWallDetection()
         {
@@ -723,10 +797,40 @@ namespace Bloop.Gameplay
                 }
             }
 
-            // 1-frame hysteresis: hold the wall flag for one extra frame after losing contact
-            // to prevent single-frame flicker on diagonal walk-off corners.
-            _player.IsTouchingWallLeft  = touchLeft  || _prevTouchingWallLeft;
-            _player.IsTouchingWallRight = touchRight || _prevTouchingWallRight;
+            // ── Bug #4 fix: timer-based hysteresis ─────────────────────────────
+            // Replace 1-frame boolean hysteresis with an 80ms timer.
+            // When the player loses wall contact, the wall flag stays true for
+            // WallHysteresisDuration seconds. This prevents oscillation when the
+            // player slides past tile corners or diagonal edges.
+            if (touchLeft)
+            {
+                _player.IsTouchingWallLeft = true;
+                _wallHysteresisTimer = WallHysteresisDuration;
+            }
+            else if (_wallHysteresisTimer > 0f)
+            {
+                _player.IsTouchingWallLeft = true;
+            }
+            else
+            {
+                _player.IsTouchingWallLeft = false;
+            }
+
+            if (touchRight)
+            {
+                _player.IsTouchingWallRight = true;
+                _wallHysteresisTimer = WallHysteresisDuration;
+            }
+            else if (_wallHysteresisTimer > 0f)
+            {
+                _player.IsTouchingWallRight = true;
+            }
+            else
+            {
+                _player.IsTouchingWallRight = false;
+            }
+
+            // Keep the old flags for backward compat (used elsewhere)
             _prevTouchingWallLeft  = touchLeft;
             _prevTouchingWallRight = touchRight;
         }
@@ -745,6 +849,10 @@ namespace Bloop.Gameplay
         ///
         /// If all conditions are met, calls Player.StartMantle() with the
         /// target standing position on top of the ledge.
+        ///
+        /// Bug #5 fix: also detects horizontal ledges when the player is walking
+        /// toward a wall with a gap above (grounded auto-mantle). This handles
+        /// the case where the player walks off a low ledge and can grab the next one.
         /// </summary>
         private void CheckLedgeGrab()
         {
@@ -817,6 +925,10 @@ namespace Bloop.Gameplay
         /// Called while WallClinging and pressing W/Up.
         /// If the player's head is meeting a solid floor tile directly above and
         /// there is clear space on top of it, triggers a mantle to pull them over.
+        ///
+        /// Bug #5 fix: uses the wall-adjacent tile column (the column the player is
+        /// clinging to) instead of the player center column. This ensures the ledge
+        /// detection works correctly when the player is offset from the wall center.
         /// </summary>
         private void CheckLedgeGrabFromCling()
         {
@@ -824,22 +936,33 @@ namespace Bloop.Gameplay
 
             int     ts      = TileMap.TileSize;
             Vector2 pos     = _player.PixelPosition;
+            float   halfW   = Player.WidthPx / 2f;
             float   halfH   = _player.CurrentHeightPx / 2f;
 
-            // Tile column directly under the player center
-            int cx = (int)(pos.X / ts);
+            // ── Bug #5 fix: use wall-adjacent tile column ──────────────────────
+            // Determine which column the wall is in based on which side we're clinging to.
+            // This is more reliable than using the player center column, which may be
+            // offset from the wall when the player is pressed against it.
+            int wallTx;
+            if (_player.IsTouchingWallLeft)
+                wallTx = (int)((pos.X - halfW - 2f) / ts);
+            else if (_player.IsTouchingWallRight)
+                wallTx = (int)((pos.X + halfW + 2f) / ts);
+            else
+                wallTx = (int)(pos.X / ts); // fallback to center
+
             // Tile row at the player's head
             int headTy  = (int)((pos.Y - halfH) / ts);
             int aboveTy = headTy - 1;
 
-            if (cx < 0 || cx >= _tileMap.Width)  return;
+            if (wallTx < 0 || wallTx >= _tileMap.Width)  return;
             if (headTy  < 0 || headTy  >= _tileMap.Height) return;
             if (aboveTy < 0 || aboveTy >= _tileMap.Height) return;
 
             // Head must be pressing into a solid tile (the floor)
-            if (!TileProperties.IsSolid(_tileMap.GetTile(cx, headTy))) return;
+            if (!TileProperties.IsSolid(_tileMap.GetTile(wallTx, headTy))) return;
             // There must be clear space to stand on top of that tile
-            if (TileProperties.IsSolid(_tileMap.GetTile(cx, aboveTy))) return;
+            if (TileProperties.IsSolid(_tileMap.GetTile(wallTx, aboveTy))) return;
 
             // Mantle: stand on top of the blocking tile
             float targetY = headTy * ts - halfH;
