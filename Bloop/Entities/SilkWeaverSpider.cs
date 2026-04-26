@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -23,7 +23,7 @@ namespace Bloop.Entities
         public const float WidthPx  = 40f; // 2× larger
         public const float HeightPx = 28f; // 2× larger
 
-        public override string DisplayName    => "Silk Weaver Spider";
+        public override string DisplayName    => "Silk Weaver Spider"; 
         public override float  ControlDuration => 16f;
         public override float  MovementSpeed   => 120f;
         public override bool   CanWallClimb    => true;

@@ -60,6 +60,7 @@ namespace Bloop.Gameplay
 
         public bool IsFlying   => _isFlying;
         public bool IsAnchored => _isAnchored;
+        public Vector2 AnchorPixelPos => _anchorPixelPos;
 
         // ── Rope wrap system ───────────────────────────────────────────────────
         private readonly RopeWrapSystem _wrapSystem;
@@ -255,11 +256,18 @@ namespace Bloop.Gameplay
                 _joint.MaxLength = System.Math.Max(0.1f,
                     PhysicsManager.ToMeters(remainingLength));
 
-                // If external code (e.g. stun recovery) moved the player out of Swinging,
-                // restore it so rope climbing and swing controls keep working.
+                // If external code moved the player out of Swinging, restore it so rope
+                // climbing and swing controls keep working.
+                // Exceptions: don't restore if the player is grounded (they landed while
+                // anchored — let Idle/Walking stand), Stunned, Dead, or in Launching.
                 if (_ownerPlayer.State != PlayerState.Swinging &&
                     _ownerPlayer.State != PlayerState.Stunned &&
-                    _ownerPlayer.State != PlayerState.Dead)
+                    _ownerPlayer.State != PlayerState.Dead &&
+                    _ownerPlayer.State != PlayerState.Launching &&
+                    !(_ownerPlayer.IsGrounded &&
+                      (_ownerPlayer.State == PlayerState.Idle ||
+                       _ownerPlayer.State == PlayerState.Walking ||
+                       _ownerPlayer.State == PlayerState.Crouching)))
                 {
                     _ownerPlayer.SetState(PlayerState.Swinging);
                 }
@@ -405,10 +413,17 @@ namespace Bloop.Gameplay
 
             // Use the contact point from the manifold for accurate anchor placement
             // rather than the hook body center (which may have moved during solver).
-            // GetWorldManifold returns a FixedArray2<Vector2> (a value-type struct),
-            // so we index directly — no null check needed.
+            // FixedArray2<Vector2> always has 2 slots; the live count is in Manifold.PointCount.
             contact.GetWorldManifold(out _, out var contactPoints);
-            _pendingAnchorPos       = contactPoints[0]; // meter space — first contact point
+            if (contact.Manifold.PointCount == 0)
+            {
+                // Manifold has no points — fall back to hook body center
+                _pendingAnchorPos = _hookBody!.Position;
+            }
+            else
+            {
+                _pendingAnchorPos = contactPoints[0]; // meter space — first contact point
+            }
             _pendingPlayerPosMeters = _ownerPlayer.Body.Position; // capture now, before player falls further
 
             _pendingAnchor = true;

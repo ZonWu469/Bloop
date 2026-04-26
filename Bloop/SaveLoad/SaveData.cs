@@ -36,6 +36,9 @@ namespace Bloop.SaveLoad
         [JsonPropertyName("lanternFuel")]
         public float LanternFuel { get; set; } = 100f;
 
+        [JsonPropertyName("sanity")]
+        public float Sanity { get; set; } = 100f;
+
         // ── Inventory ──────────────────────────────────────────────────────────
         [JsonPropertyName("inventoryItems")]
         public List<SavedItem> InventoryItems { get; set; } = new();

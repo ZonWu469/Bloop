@@ -98,6 +98,12 @@ namespace Bloop.Gameplay
         // ── Facing direction ───────────────────────────────────────────────────
         public int FacingDirection { get; set; } = 1; // +1 = right, -1 = left
 
+        // ── Rope rendering data (set by PlayerController each frame) ───────────
+        /// <summary>Pixel-space anchor of the active rope; null when not rope-attached.</summary>
+        public Vector2? ActiveRopeAnchorPixels { get; set; }
+        /// <summary>True when W/S is held while rope-attached and airborne.</summary>
+        public bool IsRopeClimbing { get; set; }
+
         // ── Stats ──────────────────────────────────────────────────────────────
         public PlayerStats Stats { get; } = new PlayerStats();
 
@@ -363,10 +369,10 @@ namespace Bloop.Gameplay
             {
                 _launchTimer -= dt;
 
-                // Apply reduced gravity by counteracting the world gravity partially
-                // World gravity ≈ 9.8 m/s² downward; we apply an upward force to
+                // Apply reduced gravity by counteracting the world gravity partially.
+                // World gravity = 20 m/s² (set in PhysicsManager); we apply an upward force to
                 // reduce effective gravity to LaunchGravityScale fraction.
-                float worldGravity = 9.8f; // m/s²
+                float worldGravity = 20f; // m/s² — must match PhysicsManager gravity
                 float counterForce = worldGravity * Body.Mass * (1f - LaunchGravityScale);
                 Body.ApplyForce(new Vector2(0f, -counterForce));
 
@@ -387,6 +393,7 @@ namespace Bloop.Gameplay
                     Body.LinearVelocity = Vector2.Zero;
                     Body.IgnoreGravity  = false;
                     Body.LinearDamping  = 0f;
+                    _peakFallVelMs = 0f; // safe on ledge — cancel any accumulated fall velocity
                     SetState(PlayerState.Idle);
                 }
                 return; // skip normal update during mantle
@@ -510,7 +517,8 @@ namespace Bloop.Gameplay
 
             _mantleTargetPixel = targetPixelPos;
             _mantleTimer       = MantleDuration;
-            _peakFallVelMs     = 0f; // cancel fall damage — the mantle absorbs the impact
+            // Peak fall velocity is reset after the mantle completes (player is safely on ledge),
+            // not here — resetting early allowed escaping damage by grazing a ledge mid-fall.
 
             // Reset contact counters before freezing physics to avoid stale state
             ResetContactCounters();

@@ -35,6 +35,7 @@ namespace Bloop.Gameplay
         private bool       _isAttached;
 
         public bool IsAttached => _isAttached;
+        public Vector2 AnchorPixelPos => _anchorPixelPos;
 
         // ── Rope wrap system ───────────────────────────────────────────────────
         private readonly RopeWrapSystem _wrapSystem;

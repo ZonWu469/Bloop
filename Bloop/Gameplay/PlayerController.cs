@@ -90,6 +90,16 @@ namespace Bloop.Gameplay
         /// <summary>Remaining cooldown time before another wall jump is allowed.</summary>
         private float _wallJumpCooldownTimer = 0f;
 
+        // ── Wall detection hysteresis (holds flags 1 extra frame after losing contact) ─
+        private bool _prevTouchingWallLeft  = false;
+        private bool _prevTouchingWallRight = false;
+
+        // ── Wall-cling coyote time (allows wall-jump briefly after releasing cling) ─
+        private float _wallClingCoyoteTimer = 0f;
+        private const float WallClingCoyoteDuration = 0.08f;
+        // Which wall was last clung (true = right wall), used to compute kick direction during coyote window
+        private bool _lastClingWasRightWall = false;
+
         // ── Wall slide / cling state ───────────────────────────────────────────
         /// <summary>How long the player has been pressing toward a wall while falling.</summary>
         private float _wallSlideTimer = 0f;
@@ -204,6 +214,19 @@ namespace Bloop.Gameplay
             // ── Wall cling controls ────────────────────────────────────────────
             if (_player.State == PlayerState.WallClinging)
             {
+                // Allow grapple fire/release while wall-clinging
+                if (_input.CurrentMode == Bloop.Core.InputMode.Normal)
+                {
+                    if (_input.IsLeftClickPressed())
+                    {
+                        Vector2 ms = _input.GetMouseWorldPosition();
+                        Vector2 mw = _camera.ScreenToWorld(ms);
+                        _grapple.TryFire(_player, mw);
+                    }
+                    if (_input.IsRightClickPressed() && (_grapple.IsFlying || _grapple.IsAnchored))
+                        _grapple.Release();
+                }
+
                 float horiz = _input.GetHorizontalAxis();
                 bool pressingTowardWall = (_player.IsTouchingWallLeft  && horiz < 0f)
                                        || (_player.IsTouchingWallRight && horiz > 0f);
@@ -219,7 +242,9 @@ namespace Bloop.Gameplay
                 }
                 else if (_input.IsCrouchHeld() || (!pressingTowardWall && horiz != 0f))
                 {
-                    // Down or pressing away: release cling
+                    // Down or pressing away: release cling — start coyote window for wall jump
+                    _wallClingCoyoteTimer = WallClingCoyoteDuration;
+                    _lastClingWasRightWall = _player.IsTouchingWallRight;
                     _player.Body.IgnoreGravity = false;
                     _player.Body.LinearDamping = 0f;
                     _player.SetState(PlayerState.Falling);
@@ -232,6 +257,8 @@ namespace Bloop.Gameplay
                     _player.Body.IgnoreGravity = false;
                     _player.Body.LinearDamping = 8f;
                     _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, -WallClimbSpeed));
+                    // Mantle over the top when head meets a solid floor tile above
+                    CheckLedgeGrabFromCling();
                     return;
                 }
                 else
@@ -383,6 +410,12 @@ namespace Bloop.Gameplay
             // ── Rappelling movement ────────────────────────────────────────────
             if (_player.State == PlayerState.Rappelling)
             {
+                _player.ActiveRopeAnchorPixels = _rope.AnchorPixelPos;
+                _player.IsRopeClimbing = !_player.IsGrounded &&
+                    (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down));
                 _rope.Update(gameTime, _player, _input);
                 return;
             }
@@ -390,6 +423,13 @@ namespace Bloop.Gameplay
             // ── Swinging movement ──────────────────────────────────────────────
             if (_player.State == PlayerState.Swinging)
             {
+                _player.ActiveRopeAnchorPixels = _grapple.AnchorPixelPos;
+                _player.IsRopeClimbing = !_player.IsGrounded &&
+                    (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Up) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
+                     _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down));
+
                 // Apply small horizontal force to swing direction
                 float swingForce = _input.GetHorizontalAxis() * MoveForce * 0.4f;
                 _player.Body.ApplyForce(PhysicsManager.ToMeters(new Vector2(swingForce, 0f)));
@@ -403,6 +443,10 @@ namespace Bloop.Gameplay
                     _grapple.AdjustLength(+ClimbSpeed * dt);
                 return;
             }
+
+            // Not on any rope — clear the rope rendering data
+            _player.ActiveRopeAnchorPixels = null;
+            _player.IsRopeClimbing = false;
 
             // ── Crouch entry / exit ────────────────────────────────────────────
             bool crouchHeld = _input.IsCrouchHeld();
@@ -486,6 +530,10 @@ namespace Bloop.Gameplay
             if (_wallJumpCooldownTimer > 0f)
                 _wallJumpCooldownTimer -= dt;
 
+            // ── Wall-cling coyote tick ─────────────────────────────────────────
+            if (_wallClingCoyoteTimer > 0f)
+                _wallClingCoyoteTimer -= dt;
+
             // ── Jump ───────────────────────────────────────────────────────────
             bool jumpPressed = _input.IsJumpPressed();
             if (jumpPressed && !isCrouching)
@@ -516,7 +564,7 @@ namespace Bloop.Gameplay
                 }
             }
             else if (jumpPressed
-                  && _player.IsTouchingWall
+                  && (_player.IsTouchingWall || _wallClingCoyoteTimer > 0f)
                   && !_player.IsGrounded
                   && _wallJumpCooldownTimer <= 0f
                   && (_player.State == PlayerState.Falling
@@ -524,8 +572,11 @@ namespace Bloop.Gameplay
                    || _player.State == PlayerState.WallJumping))
             {
                 // ── Wall jump ──────────────────────────────────────────────────
-                // Kick away from the wall: if touching right wall, jump left; vice versa
-                float kickDir = _player.IsTouchingWallRight ? -1f : 1f;
+                // Kick away from the wall: if touching right wall (or last clung right), jump left
+                bool onRightWall = _player.IsTouchingWallRight ||
+                                   (_wallClingCoyoteTimer > 0f && _lastClingWasRightWall);
+                float kickDir = onRightWall ? -1f : 1f;
+                _wallClingCoyoteTimer = 0f; // consume coyote window
 
                 // ReducedJump debuff modifier
                 float jumpModifier = _player.Debuffs.GetModifier(DebuffType.ReducedJump);
@@ -672,8 +723,12 @@ namespace Bloop.Gameplay
                 }
             }
 
-            _player.IsTouchingWallLeft  = touchLeft;
-            _player.IsTouchingWallRight = touchRight;
+            // 1-frame hysteresis: hold the wall flag for one extra frame after losing contact
+            // to prevent single-frame flicker on diagonal walk-off corners.
+            _player.IsTouchingWallLeft  = touchLeft  || _prevTouchingWallLeft;
+            _player.IsTouchingWallRight = touchRight || _prevTouchingWallRight;
+            _prevTouchingWallLeft  = touchLeft;
+            _prevTouchingWallRight = touchRight;
         }
 
         // ── Ledge grab helper (2.2) ────────────────────────────────────────────
@@ -754,6 +809,41 @@ namespace Bloop.Gameplay
             float targetY = ledgeTopPx - halfH;
 
             _player.StartMantle(new Vector2(targetX, targetY));
+        }
+
+        // ── Ledge grab from cling (climb-up mantle) ───────────────────────────
+
+        /// <summary>
+        /// Called while WallClinging and pressing W/Up.
+        /// If the player's head is meeting a solid floor tile directly above and
+        /// there is clear space on top of it, triggers a mantle to pull them over.
+        /// </summary>
+        private void CheckLedgeGrabFromCling()
+        {
+            if (_tileMap == null) return;
+
+            int     ts      = TileMap.TileSize;
+            Vector2 pos     = _player.PixelPosition;
+            float   halfH   = _player.CurrentHeightPx / 2f;
+
+            // Tile column directly under the player center
+            int cx = (int)(pos.X / ts);
+            // Tile row at the player's head
+            int headTy  = (int)((pos.Y - halfH) / ts);
+            int aboveTy = headTy - 1;
+
+            if (cx < 0 || cx >= _tileMap.Width)  return;
+            if (headTy  < 0 || headTy  >= _tileMap.Height) return;
+            if (aboveTy < 0 || aboveTy >= _tileMap.Height) return;
+
+            // Head must be pressing into a solid tile (the floor)
+            if (!TileProperties.IsSolid(_tileMap.GetTile(cx, headTy))) return;
+            // There must be clear space to stand on top of that tile
+            if (TileProperties.IsSolid(_tileMap.GetTile(cx, aboveTy))) return;
+
+            // Mantle: stand on top of the blocking tile
+            float targetY = headTy * ts - halfH;
+            _player.StartMantle(new Vector2(pos.X, targetY));
         }
 
         // ── Flare trajectory preview ───────────────────────────────────────────

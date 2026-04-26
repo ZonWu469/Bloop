@@ -118,6 +118,7 @@ namespace Bloop.Gameplay
             Vector2 currentAnchorPixels = GetCurrentAnchorPixels(primaryAnchorPixels);
 
             // ── Check for new wrap: does the rope line hit terrain? ────────────
+            bool addedWrap = false;
             if (_wrapPoints.Count < MaxWrapPoints)
             {
                 Vector2? wrapPixels = FindTerrainIntersection(currentAnchorPixels, playerPixels);
@@ -130,16 +131,17 @@ namespace Bloop.Gameplay
                     float angle = ComputeAngle(currentAnchorPixels, cornerPixels, playerPixels);
                     if (Math.Abs(angle) > MinWrapAngle)
                     {
-                        AddWrapPoint(cornerPixels, playerBody, ref remainingLengthPixels);
+                        AddWrapPoint(cornerPixels, currentAnchorPixels, playerBody, ref remainingLengthPixels);
                         currentAnchorPixels = cornerPixels;
+                        addedWrap = true;
                     }
                 }
             }
 
             // ── Check for unwrap: can we remove the last wrap point? ───────────
-            if (_wrapPoints.Count > 0)
+            // Use else-if to avoid adding and removing in the same frame.
+            if (!addedWrap && _wrapPoints.Count > 0)
             {
-                var lastWrap = _wrapPoints[_wrapPoints.Count - 1];
                 Vector2 prevAnchorPixels = _wrapPoints.Count > 1
                     ? _wrapPoints[_wrapPoints.Count - 2].PositionPixels
                     : primaryAnchorPixels;
@@ -187,8 +189,10 @@ namespace Bloop.Gameplay
             for (int i = _wrapPoints.Count - 1; i >= 0; i--)
             {
                 var wp = _wrapPoints[i];
-                try { _world.Remove(wp.Joint); } catch { }
-                try { _world.Remove(wp.Body);  } catch { }
+                try { _world.Remove(wp.Joint); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[RopeWrapSystem] Clear joint: {ex.Message}"); }
+                try { _world.Remove(wp.Body); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[RopeWrapSystem] Clear body: {ex.Message}"); }
             }
             _wrapPoints.Clear();
         }
@@ -216,13 +220,9 @@ namespace Bloop.Gameplay
         /// Creates a static body and RopeJoint from this point to the player.
         /// Reduces remainingLengthPixels by the distance from the current anchor to this point.
         /// </summary>
-        private void AddWrapPoint(Vector2 cornerPixels, Body playerBody, ref float remainingLengthPixels)
+        private void AddWrapPoint(Vector2 cornerPixels, Vector2 currentAnchorPixels,
+            Body playerBody, ref float remainingLengthPixels)
         {
-            // The segment from the current anchor to this wrap point
-            Vector2 currentAnchorPixels = _wrapPoints.Count > 0
-                ? _wrapPoints[_wrapPoints.Count - 1].PositionPixels
-                : cornerPixels; // fallback
-
             float segmentLengthPixels = Vector2.Distance(currentAnchorPixels, cornerPixels);
             float segmentLengthMeters = PhysicsManager.ToMeters(segmentLengthPixels);
 
@@ -259,8 +259,10 @@ namespace Bloop.Gameplay
             var wp = _wrapPoints[_wrapPoints.Count - 1];
             remainingLengthPixels += wp.SegmentLength;
 
-            try { _world.Remove(wp.Joint); } catch { }
-            try { _world.Remove(wp.Body);  } catch { }
+            try { _world.Remove(wp.Joint); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[RopeWrapSystem] Remove joint: {ex.Message}"); }
+            try { _world.Remove(wp.Body); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[RopeWrapSystem] Remove body: {ex.Message}"); }
 
             _wrapPoints.RemoveAt(_wrapPoints.Count - 1);
         }

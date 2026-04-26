@@ -5,6 +5,7 @@ using Bloop.Effects;
 using Bloop.Entities;
 using Bloop.Gameplay;
 using Bloop.Generators;
+using Bloop.Lore;
 using Bloop.Lighting;
 using Bloop.Objects;
 using Bloop.Physics;
@@ -62,6 +63,12 @@ namespace Bloop.Screens
         private float _displayHealth  = 1f;
         private float _displayKinetic = 0f;
 
+        // ── Sanity display & hallucination effects ────────────────────────────
+        private float _displaySanity      = 1f;
+        private float _chromaticIntensity = 0f;
+        private float _heartbeatTimer     = 0f;
+        private RenderTarget2D? _postProcessTarget;
+
         // ── Shard counter pulse (Task 10) ──────────────────────────────────────
         private int   _lastShardCount  = 0;
         private float _shardPulseTimer = 0f;
@@ -100,6 +107,9 @@ namespace Bloop.Screens
 
         // ── Active flares ──────────────────────────────────────────────────────
         private readonly List<FlareObject> _activeFlares = new();
+
+        // ── Reusable reaction-light list (avoids per-frame List allocation) ────
+        private readonly List<LightSource> _reactionLights = new();
 
         // ── Colors ─────────────────────────────────────────────────────────────
         private static readonly Color BgColor   = new Color(4, 6, 10);
@@ -140,9 +150,12 @@ namespace Bloop.Screens
             // Restore stats from save if available
             if (SaveData != null)
             {
-                _player.Stats.SetFromSave(SaveData.Health, SaveData.BreathMeter, SaveData.LanternFuel);
+                _player.Stats.SetFromSave(SaveData.Health, SaveData.BreathMeter, SaveData.LanternFuel, SaveData.Sanity);
                 _player.Inventory.LoadFromSave(SaveData.InventoryItems);
             }
+
+            // Wire lore/shard collection event
+            _level.OnShardCollected += OnShardCollected;
 
             // ── Camera bounds (now that TileMap dimensions are known) ──────────
             _camera.SetBounds(
@@ -283,18 +296,19 @@ namespace Bloop.Screens
             _grapple?.Update(gameTime);
 
             // ── Prune expired flares from active list ─────────────────────────
-            _activeFlares.RemoveAll(f => f.IsDestroyed);
+            for (int i = _activeFlares.Count - 1; i >= 0; i--)
+                if (_activeFlares[i].IsDestroyed) _activeFlares.RemoveAt(i);
 
             // ── Build reaction-light list (lantern + active flares) ───────────
-            // Only lantern and flares trigger entity light reactions.
-            var reactionLights = new System.Collections.Generic.List<Lighting.LightSource>();
+            // Reuse the same list instance to avoid per-frame GC allocation.
+            _reactionLights.Clear();
             if (_lanternLight != null && _lanternLight.EffectiveIntensity > 0f)
-                reactionLights.Add(_lanternLight);
+                _reactionLights.Add(_lanternLight);
             foreach (var flare in _activeFlares)
-                reactionLights.Add(flare.Light);
+                _reactionLights.Add(flare.Light);
 
             // ── Update level objects (pass player + reaction lights) ──────────
-            _level.Update(gameTime, _player, reactionLights);
+            _level.Update(gameTime, _player, _reactionLights);
 
             // ── Update hover tooltip ───────────────────────────────────────────
             _hoverTooltip.Update(input, _camera, _level);
@@ -339,6 +353,28 @@ namespace Bloop.Screens
             _displayBreath  = MathHelper.Lerp(_displayBreath,  actualBreath,  dt * 8f);
             _displayHealth  = MathHelper.Lerp(_displayHealth,  actualHealth,  dt * 8f);
             _displayKinetic = MathHelper.Lerp(_displayKinetic, actualKinetic, dt * 8f);
+
+            // ── Sanity smooth display + hallucination effects ──────────────────
+            float actualSanity = _player.Stats.Sanity / PlayerStats.MaxSanity;
+            _displaySanity = MathHelper.Lerp(_displaySanity, actualSanity, dt * 6f);
+            ApplySanityDebuffs(dt);
+
+            // Passive sanity drain from nearby hostile entities
+            if (_level != null)
+            {
+                float drainRate = 0f;
+                foreach (var obj in _level.Objects)
+                {
+                    if (obj is ControllableEntity entity && !entity.IsDestroyed
+                        && entity.DamagesPlayerOnContact)
+                    {
+                        float dist = Vector2.Distance(_player.PixelPosition, entity.PixelPosition);
+                        if (dist < 120f) drainRate += 3f;
+                    }
+                }
+                if (drainRate > 0f)
+                    _player.Stats.DrainSanity(drainRate, dt);
+            }
 
             // ── Shard pulse timer (Task 10) ────────────────────────────────────
             if (_level != null)
@@ -434,8 +470,41 @@ namespace Bloop.Screens
                 // Pass 2: Render light map (radial gradients, additive)
                 lighting.RenderLightMap(spriteBatch, _camera.GetTransform());
 
-                // Pass 3: Composite scene × lightMap + ambient onto virtual target
-                lighting.Composite(spriteBatch);
+                // Pass 3: Composite scene × lightMap + ambient
+                // When chromatic aberration is active, composite to intermediate target
+                // then apply the CA shader on the way to the backbuffer.
+                var caEffect = Game1.ChromaticEffect;
+                bool useCA   = _chromaticIntensity > 0.01f && caEffect != null;
+
+                if (useCA)
+                {
+                    // Lazy-recreate post-process target if size changed
+                    if (_postProcessTarget == null
+                        || _postProcessTarget.Width  != vw
+                        || _postProcessTarget.Height != vh)
+                    {
+                        _postProcessTarget?.Dispose();
+                        _postProcessTarget = new RenderTarget2D(GraphicsDevice, vw, vh,
+                            false, GraphicsDevice.PresentationParameters.BackBufferFormat,
+                            DepthFormat.None);
+                    }
+
+                    lighting.Composite(spriteBatch, _postProcessTarget);
+
+                    // Restore backbuffer and apply CA shader
+                    GraphicsDevice.SetRenderTarget(null);
+                    caEffect!.Parameters["Intensity"]?.SetValue(_chromaticIntensity);
+                    caEffect.Parameters["ViewportSize"]?.SetValue(new Vector2(vw, vh));
+                    spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque,
+                        SamplerState.LinearClamp, null, null, caEffect);
+                    spriteBatch.Draw(_postProcessTarget,
+                        new Rectangle(0, 0, vw, vh), Color.White);
+                    spriteBatch.End();
+                }
+                else
+                {
+                    lighting.Composite(spriteBatch);
+                }
             }
             else
             {
@@ -485,6 +554,8 @@ namespace Bloop.Screens
 
             _level?.Dispose();
             _physics?.Dispose();
+            _postProcessTarget?.Dispose();
+            _postProcessTarget = null;
         }
 
         // ── Save helper ────────────────────────────────────────────────────────
@@ -499,6 +570,7 @@ namespace Bloop.Screens
                 Health         = _player.Stats.Health,
                 BreathMeter    = _player.Stats.Breath,
                 LanternFuel    = _player.Stats.LanternFuel,
+                Sanity         = _player.Stats.Sanity,
                 InventoryItems = _player.Inventory.ToSaveData(),
             };
             SaveManager.Save(data);
@@ -511,41 +583,43 @@ namespace Bloop.Screens
         {
             if (_player == null || _level == null) return "";
 
-            // Priority 1: entity control ready and entity nearby
-            if (_entityControl != null && _entityControl.IsReady && !_entityControl.IsControlling)
+            // Single pass over objects; track best result per priority level.
+            // Priority 1 > 2 > 3 — return early if highest priority is found.
+            bool entityControlReady = _entityControl != null
+                && _entityControl.IsReady && !_entityControl.IsControlling;
+
+            string? entityPrompt = null;
+            string? climbPrompt  = null;
+            string? ventPrompt   = null;
+
+            Vector2 playerPos = _player.PixelPosition;
+
+            foreach (var obj in _level.Objects)
             {
-                foreach (var obj in _level.Objects)
+                if (obj.IsDestroyed) continue;
+
+                if (entityPrompt == null && entityControlReady &&
+                    obj is Entities.ControllableEntity ent && !ent.IsControlled)
                 {
-                    if (obj is Entities.ControllableEntity ent && !ent.IsDestroyed && !ent.IsControlled)
+                    if (Vector2.Distance(playerPos, ent.PixelPosition) < Entities.EntityControlSystem.SelectionRange)
                     {
-                        float dist = Vector2.Distance(_player.PixelPosition, ent.PixelPosition);
-                        if (dist < Entities.EntityControlSystem.SelectionRange)
-                            return "[Q] Control Entity";
+                        entityPrompt = "[Q] Control Entity";
+                        break; // highest priority — no need to scan further
                     }
                 }
-            }
-
-            // Priority 2: near climbable surface
-            foreach (var obj in _level.Objects)
-            {
-                if (obj is Objects.ClimbableSurface cs && !cs.IsDestroyed)
+                else if (climbPrompt == null && obj is Objects.ClimbableSurface cs)
                 {
-                    float dist = Vector2.Distance(_player.PixelPosition, cs.PixelPosition);
-                    if (dist < 40f) return "[C] Climb";
+                    if (Vector2.Distance(playerPos, cs.PixelPosition) < 40f)
+                        climbPrompt = "[C] Climb";
+                }
+                else if (ventPrompt == null && obj is Objects.VentFlower vf)
+                {
+                    if (Vector2.Distance(playerPos, vf.PixelPosition) < 48f)
+                        ventPrompt = "Stand to Recharge";
                 }
             }
 
-            // Priority 3: near vent flower
-            foreach (var obj in _level.Objects)
-            {
-                if (obj is Objects.VentFlower vf && !vf.IsDestroyed)
-                {
-                    float dist = Vector2.Distance(_player.PixelPosition, vf.PixelPosition);
-                    if (dist < 48f) return "Stand to Recharge";
-                }
-            }
-
-            return "";
+            return entityPrompt ?? climbPrompt ?? ventPrompt ?? "";
         }
 
         private void DrawContextualPrompt(SpriteBatch sb, AssetManager assets, int vw, int vh)
@@ -579,9 +653,10 @@ namespace Bloop.Screens
         /// <summary>Draw all world-space content (level, rope, grapple, player, debug).</summary>
         private void DrawWorld(SpriteBatch spriteBatch, AssetManager assets)
         {
-            // Update danger indicator proximity reference for EntityRenderer
+            // Update shared per-frame data for EntityRenderer (danger + culling)
             if (_player != null)
                 Rendering.EntityRenderer.PlayerPositionForDanger = _player.PixelPosition;
+            Rendering.EntityRenderer.VisibleBounds = _camera!.GetVisibleBounds();
 
             // Level (background + tiles + objects)
             _level!.Draw(spriteBatch, assets, _camera!.GetVisibleBounds());
@@ -624,6 +699,51 @@ namespace Bloop.Screens
 
             // Physics debug overlay (F1)
             _debugDraw.Draw(spriteBatch, _physics!.World, assets, _camera.GetVisibleBounds());
+        }
+
+        // ── Lore / sanity helpers ──────────────────────────────────────────────
+
+        private void OnShardCollected(int shardIndex, LoreEntry entry)
+        {
+            ScreenManager.Push(new LoreModalScreen(entry,
+                sanityDelta => _player?.Stats.ApplySanityDelta(sanityDelta)));
+        }
+
+        private void ApplySanityDebuffs(float dt)
+        {
+            if (_player == null) return;
+            float sanity = _player.Stats.Sanity;
+
+            // < 60%: slow movement
+            if (sanity < 60f)
+                _player.Debuffs.ApplyDebuff(DebuffType.SlowMovement, 2f);
+
+            // < 45%: heartbeat lantern flicker
+            if (sanity < 45f && _lanternLight != null)
+            {
+                _heartbeatTimer += dt;
+                float hbPhase  = _heartbeatTimer % 1.1f;  // 1.1s cycle
+                float heartbeat = (hbPhase < 0.1f || (hbPhase > 0.3f && hbPhase < 0.4f))
+                    ? 0.30f  // strong flicker during "beat"
+                    : 0.04f; // normal background flicker
+                float blend = 1f - (sanity / 45f);
+                _lanternLight.FlickerAmplitude =
+                    MathHelper.Lerp(_lanternLight.FlickerAmplitude, heartbeat, blend * 0.3f);
+            }
+
+            // < 40%: inverted controls
+            if (sanity < 40f)
+                _player.Debuffs.ApplyDebuff(DebuffType.InvertedControls, 2f);
+
+            // < 30%: blurred lantern
+            if (sanity < 30f)
+                _player.Debuffs.ApplyDebuff(DebuffType.Blurred, 2f);
+
+            // < 20%: chromatic aberration ramps up toward 1.0
+            float targetCA = sanity < 20f
+                ? MathHelper.Lerp(0.25f, 1.0f, 1f - sanity / 20f)
+                : 0f;
+            _chromaticIntensity = MathHelper.Lerp(_chromaticIntensity, targetCA, dt * 2f);
         }
 
         /// <summary>Reload the level for the new depth (called on exit).</summary>
@@ -677,6 +797,9 @@ namespace Bloop.Screens
                     _activeFlares.Add(flare);
                 };
             }
+
+            // Re-wire lore event for the new level
+            _level.OnShardCollected += OnShardCollected;
 
             // Re-wire earthquake shake callback for the new level
             if (_level.Earthquake != null)
@@ -916,6 +1039,45 @@ namespace Bloop.Screens
             assets.DrawRect(spriteBatch,
                 new Rectangle(barX + iconW / 2 - 1, y + 2, 2, barH - 4),
                 kineticFill * 0.9f);
+            y += barH + 6;
+
+            // ── Sanity bar ─────────────────────────────────────────────────────
+            {
+                float sf    = _displaySanity;
+                bool  slow  = sf < 0.60f;
+                bool  low   = sf < 0.40f;
+                bool  crit  = sf < 0.20f;
+
+                Color sanityFill;
+                if (sf > 0.60f)
+                    sanityFill = Color.Lerp(new Color(220, 180, 40), new Color(80, 200, 80),
+                        (sf - 0.60f) / 0.40f);
+                else if (sf > 0.40f)
+                    sanityFill = Color.Lerp(new Color(220, 100, 40), new Color(220, 180, 40),
+                        (sf - 0.40f) / 0.20f);
+                else
+                    sanityFill = new Color(210, 50, 50);
+
+                if (crit)
+                    sanityFill = Color.Lerp(sanityFill, new Color(255, 200, 200),
+                        AnimationClock.Pulse(8f) * 0.4f);
+                else if (low)
+                    sanityFill = Color.Lerp(sanityFill, new Color(255, 80, 80),
+                        AnimationClock.Pulse(4f) * 0.3f);
+
+                DrawBar(spriteBatch, assets, barX + iconW + 2, y, barW, barH,
+                    sf, sanityFill, new Color(20, 8, 8),
+                    $"Mind {(int)_player.Stats.Sanity}/{(int)PlayerStats.MaxSanity}",
+                    lowWarning: low);
+
+                // Icon: concentric-square eye
+                int ix = barX + 2, iy = y + 2, is_ = barH - 4;
+                assets.DrawRectOutline(spriteBatch,
+                    new Rectangle(ix, iy, is_, is_), sanityFill * 0.55f, 1);
+                assets.DrawRect(spriteBatch,
+                    new Rectangle(ix + is_ / 2 - 1, iy + is_ / 2 - 1, 3, 3),
+                    sanityFill * 0.9f);
+            }
             y += barH + 6;
 
             // ── Flare count ────────────────────────────────────────────────────

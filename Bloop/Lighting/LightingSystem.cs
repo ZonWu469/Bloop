@@ -55,8 +55,8 @@ namespace Bloop.Lighting
         private RenderTarget2D _lightTarget  = null!;
 
         // ── Light sources ──────────────────────────────────────────────────────
-        private readonly List<LightSource> _lights    = new();
-        private readonly List<LightSource> _toRemove  = new();
+        private readonly List<LightSource> _lights = new();
+        private static readonly Predicate<LightSource> _expiredPredicate = l => l.IsExpired;
 
         // ── Configuration ──────────────────────────────────────────────────────
         /// <summary>
@@ -139,15 +139,10 @@ namespace Bloop.Lighting
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             foreach (var light in _lights)
-            {
                 light.Update(dt);
-                if (light.IsExpired)
-                    _toRemove.Add(light);
-            }
 
-            foreach (var light in _toRemove)
-                _lights.Remove(light);
-            _toRemove.Clear();
+            // Single-pass removal via cached predicate — O(n) instead of O(n²)
+            _lights.RemoveAll(_expiredPredicate);
         }
 
         // ── Rendering passes ───────────────────────────────────────────────────
@@ -235,12 +230,15 @@ namespace Bloop.Lighting
         }
 
         /// <summary>
-        /// Pass 3: Composite the scene and light map onto the backbuffer.
+        /// Pass 3: Composite the scene and light map onto outputTarget (null = backbuffer).
         /// Draws the scene at full brightness, then multiplies it by the light map.
         /// Call after RenderLightMap(), before drawing the HUD.
+        /// When outputTarget is non-null the caller is responsible for restoring the
+        /// render target to null before the next draw pass.
         /// </summary>
-        public void Composite(SpriteBatch spriteBatch)
+        public void Composite(SpriteBatch spriteBatch, RenderTarget2D? outputTarget = null)
         {
+            _graphicsDevice.SetRenderTarget(outputTarget);
             int w = _sceneTarget.Width;
             int h = _sceneTarget.Height;
             var destRect = new Rectangle(0, 0, w, h);

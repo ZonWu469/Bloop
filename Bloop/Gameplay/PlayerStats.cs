@@ -14,6 +14,7 @@ namespace Bloop.Gameplay
         public const float MaxLanternFuel  = 100f;
         public const float MaxKineticCharge = 100f;
         public const int   MaxFlareCount   = 3;
+        public const float MaxSanity       = 100f;
 
         /// <summary>Base breath drain per second at depth 1.</summary>
         private const float BaseBreathDrain  = 2f;
@@ -28,6 +29,7 @@ namespace Bloop.Gameplay
         public float LanternFuel   { get; private set; } = MaxLanternFuel;
         public float KineticCharge { get; private set; } = 0f;
         public int   FlareCount    { get; private set; } = MaxFlareCount;
+        public float Sanity        { get; private set; } = MaxSanity;
 
         public bool IsAlive        => Health > 0f;
         public bool HasBreath      => Breath > 0f;
@@ -123,12 +125,28 @@ namespace Bloop.Gameplay
             KineticCharge = MathHelper.Clamp(KineticCharge - 20f * deltaSeconds, 0f, MaxKineticCharge);
         }
 
+        /// <summary>Apply a sanity change (positive or negative). Clamped to [0, MaxSanity].</summary>
+        public void ApplySanityDelta(int delta)
+        {
+            Sanity = MathHelper.Clamp(Sanity + delta, 0f, MaxSanity);
+        }
+
+        /// <summary>Passive sanity drain per second (entity proximity, world effects).</summary>
+        public void DrainSanity(float amountPerSecond, float deltaSeconds)
+        {
+            Sanity = MathHelper.Clamp(Sanity - amountPerSecond * deltaSeconds, 0f, MaxSanity);
+        }
+
+        /// <summary>Returns true if sanity is below the given threshold (0–100).</summary>
+        public bool SanityBelow(float threshold) => Sanity < threshold;
+
         /// <summary>Set stats directly (used when loading from save).</summary>
-        public void SetFromSave(float health, float breath, float lanternFuel)
+        public void SetFromSave(float health, float breath, float lanternFuel, float sanity = MaxSanity)
         {
             Health      = MathHelper.Clamp(health,      0f, MaxHealth);
             Breath      = MathHelper.Clamp(breath,      0f, MaxBreath);
             LanternFuel = MathHelper.Clamp(lanternFuel, 0f, MaxLanternFuel);
+            Sanity      = MathHelper.Clamp(sanity,      0f, MaxSanity);
         }
     }
 }

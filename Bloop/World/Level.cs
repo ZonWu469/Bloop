@@ -7,6 +7,7 @@ using Bloop.Core;
 using Bloop.Entities;
 using Bloop.Generators;
 using Bloop.Lighting;
+using Bloop.Lore;
 using Bloop.Objects;
 using Bloop.Physics;
 using Bloop.Rendering;
@@ -81,10 +82,16 @@ namespace Bloop.World
         /// </summary>
         public bool[,] Discovered { get; private set; } = new bool[0, 0];
 
+        // Last position passed to RevealAround — skip the O(r²) loop when player hasn't moved
+        private Vector2 _lastRevealCenter = new Vector2(-9999f, -9999f);
+        // Half-tile squared = (32/2)² = 256 — skip reveal if player moved less than half a tile
+        private const float RevealMoveThresholdSq = 256f;
+
         /// <summary>Initialize the discovered grid after the TileMap is ready.</summary>
         private void InitDiscovered()
         {
             Discovered = new bool[TileMap.Width, TileMap.Height];
+            _lastRevealCenter = new Vector2(-9999f, -9999f);
         }
 
         /// <summary>
@@ -93,6 +100,12 @@ namespace Bloop.World
         /// </summary>
         public void RevealAround(Vector2 pixelCenter, float pixelRadius)
         {
+            // Skip the O(r²) loop if the player hasn't moved more than half a tile
+            float dx = pixelCenter.X - _lastRevealCenter.X;
+            float dy = pixelCenter.Y - _lastRevealCenter.Y;
+            if (dx * dx + dy * dy < RevealMoveThresholdSq) return;
+            _lastRevealCenter = pixelCenter;
+
             int tileRadius = (int)(pixelRadius / TileMap.TileSize) + 1;
             int cx = (int)(pixelCenter.X / TileMap.TileSize);
             int cy = (int)(pixelCenter.Y / TileMap.TileSize);
@@ -122,6 +135,13 @@ namespace Bloop.World
         public int ShardsCollected { get; private set; }
         /// <summary>True once all shards are collected and the exit is open.</summary>
         public bool IsExitUnlocked => ShardsCollected >= ShardsRequired;
+
+        // ── Lore entries ───────────────────────────────────────────────────────
+        private List<LoreEntry> _loreEntries = new();
+        public IReadOnlyList<LoreEntry> LoreEntries => _loreEntries;
+
+        /// <summary>Fired when a shard is collected. Parameters: shard index (0-based), lore entry.</summary>
+        public event Action<int, LoreEntry>? OnShardCollected;
 
         // ── Colors ─────────────────────────────────────────────────────────────
         private static readonly Color EntryColor = new Color( 80, 220, 120);
@@ -196,8 +216,13 @@ namespace Bloop.World
                 // Resonance shards: count them and add emissive light
                 if (obj is ResonanceShard shard)
                 {
+                    int shardIndex = ShardsRequired; // capture before increment
                     ShardsRequired++;
-                    shard.OnCollected += () => ShardsCollected++;
+                    shard.OnCollected += () =>
+                    {
+                        ShardsCollected++;
+                        OnShardCollected?.Invoke(shardIndex, _loreEntries[shardIndex]);
+                    };
                     var shardLight = new LightSource(
                         shard.PixelPosition,
                         radius:    35f,
@@ -301,6 +326,9 @@ namespace Bloop.World
                     vine2.SetLightSource(vineLight);
                 }
             }
+
+            // ── Lore generation (uses final ShardsRequired count) ────────────
+            _loreEntries = LoreGenerator.GenerateForLevel(seed, ShardsRequired, Biome);
 
             // ── Earthquake system ─────────────────────────────────────────────
             _earthquake = new EarthquakeSystem(

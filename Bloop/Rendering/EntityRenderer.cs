@@ -38,6 +38,13 @@ namespace Bloop.Rendering
         /// </summary>
         public static Vector2 PlayerPositionForDanger { get; set; } = Vector2.Zero;
 
+        // ── Viewport culling bounds ────────────────────────────────────────────
+        /// <summary>
+        /// Set this each frame to the camera's visible bounds so DrawEntity can
+        /// skip entities that are completely off-screen.
+        /// </summary>
+        public static Rectangle VisibleBounds { get; set; }
+
         // ══════════════════════════════════════════════════════════════════════
         // ── Main entry point ──────────────────────────────────────────────────
         // ══════════════════════════════════════════════════════════════════════
@@ -61,6 +68,13 @@ namespace Bloop.Rendering
             EntitySpritesheet? sheet)
         {
             Vector2 pos = entity.PixelPosition;
+
+            // ── Viewport culling: skip entities fully outside the visible area ─
+            if (VisibleBounds != default)
+            {
+                var bounds = entity.GetBounds();
+                if (!VisibleBounds.Intersects(bounds)) return;
+            }
 
             // ── Danger indicator (behind everything) ──────────────────────────
             DrawDangerIndicator(sb, assets, entity, hitboxW, hitboxH);

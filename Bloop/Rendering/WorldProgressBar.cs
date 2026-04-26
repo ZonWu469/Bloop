@@ -113,12 +113,28 @@ namespace Bloop.Rendering
             // Remaining time text
             if (remainingTime > 0f && assets.GameFont != null)
             {
-                string timeText = $"{remainingTime:0.0}s";
+                string timeText = FormatTime(remainingTime);
                 Vector2 textSize = assets.GameFont.MeasureString(timeText) * 0.65f;
                 assets.DrawString(sb, timeText,
                     new Vector2(worldPos.X - textSize.X / 2f, worldPos.Y - textSize.Y / 2f),
                     overlayColor * 0.9f, 0.65f);
             }
+        }
+        // ── String cache for cooldown time display ────────────────────────────
+
+        private static float  _cachedTimeValue = -1f;
+        private static string _cachedTimeText  = "";
+
+        // Returns a formatted "X.Xs" string, reusing the cached result when the
+        // displayed value (rounded to 0.1s) hasn't changed.
+        private static string FormatTime(float t)
+        {
+            float rounded = MathF.Round(t, 1);
+            if (MathF.Abs(rounded - _cachedTimeValue) < 0.001f)
+                return _cachedTimeText;
+            _cachedTimeValue = rounded;
+            _cachedTimeText  = $"{rounded:0.0}s";
+            return _cachedTimeText;
         }
     }
 }

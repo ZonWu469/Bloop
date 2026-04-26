@@ -16,19 +16,21 @@ namespace Bloop.Rendering
     ///   Jumping, Falling, WallJumping,
     ///     Launching, WallClinging,
     ///     Mantling                       → scing_jumping
-    ///   Climbing, Sliding, Rappelling,
-    ///     Swinging                       → scing_climbing  (rotated −90°, facing up)
+    ///   Climbing, Sliding                → scing_climbing  (rotated −90°, facing up)
+    ///   Rappelling, Swinging (grounded)  → scing_idle / scing_walking
+    ///   Rappelling, Swinging (airborne)  → scing_climbing  (rotated toward anchor, 1.5× size)
     ///   Controlling                      → scing_controlling
     ///   Stunned                          → scing_stunned
     ///   Dead                             → scing_dead
     ///
     /// Scale: sprite height is scaled to match Player.StandingHeightPx so the
-    /// visual size matches the physics hitbox.
+    /// visual size matches the physics hitbox. Rope-attached airborne state uses 1.5× that.
     ///
     /// Facing: sprites are authored facing right.
     ///   Normal states  — SpriteEffects.FlipHorizontally when FacingDirection &lt; 0.
     ///   Climbing states — rotated −90° (character faces up, back on left).
     ///                     Flip when touching left wall so the back faces the wall.
+    ///   Rope airborne  — rotated toward anchor; flip when FacingDirection &lt; 0.
     /// </summary>
     public static class PlayerRenderer
     {
@@ -36,47 +38,91 @@ namespace Bloop.Rendering
 
         public static void Draw(SpriteBatch sb, AssetManager assets, Player player)
         {
-            var sheet = PickSheet(assets, player.State);
-            if (sheet == null) return; // spritesheets not yet loaded
+            bool isRopeAttached = player.ActiveRopeAnchorPixels.HasValue
+                && (player.State == PlayerState.Rappelling
+                    || player.State == PlayerState.Swinging);
 
-            // ── Frame index ────────────────────────────────────────────────────
-            // Clamp frameCount to at least 1 to avoid divide-by-zero on bad data.
-            int frameCount = Math.Max(1, sheet.FrameCount);
-            int frameIndex = (int)(AnimationClock.Time * sheet.Fps) % frameCount;
-            var srcRect    = sheet.GetSourceRect(frameIndex);
-
-            // ── Scale: fit sprite height to standing hitbox ────────────────────
-            float scale  = sheet.FrameHeight > 0
-                           ? Player.StandingHeightPx / sheet.FrameHeight
-                           : 1f;
-
-            // ── Origin: center of a single frame ──────────────────────────────
-            var origin = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
-
-            // ── Rotation & flip ────────────────────────────────────────────────
-            float         rotation;
+            PlayerSpritesheet? sheet;
+            int   frameIndex;
+            float scale;
+            float rotation;
             SpriteEffects effects;
 
-            if (IsClimbingState(player.State))
+            if (isRopeAttached && player.IsGrounded)
             {
-                // Rotate −90° so the sprite faces upward.
-                // The sprite's "back" (left side when facing right) becomes the
-                // bottom after rotation. Flip horizontally when touching the left
-                // wall so the back always faces the wall surface.
-                rotation = -MathF.PI / 2f;
-                effects  = player.IsTouchingWallLeft
-                           ? SpriteEffects.FlipHorizontally
-                           : SpriteEffects.None;
+                // ── On rope but touching ground: idle or walking ───────────────
+                bool isMoving = MathF.Abs(player.PixelVelocity.X) > 5f;
+                sheet = isMoving ? assets.PlayerWalking : assets.PlayerIdle;
+                if (sheet == null) return;
+
+                int frameCount = Math.Max(1, sheet.FrameCount);
+                frameIndex = (int)(AnimationClock.Time * sheet.Fps) % frameCount;
+                scale      = sheet.FrameHeight > 0
+                             ? Player.StandingHeightPx / sheet.FrameHeight : 1f;
+                rotation   = 0f;
+                effects    = player.FacingDirection < 0
+                             ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+            }
+            else if (isRopeAttached)
+            {
+                // ── Airborne on rope: scing_climbing ──────────────────────────
+                sheet = assets.PlayerClimbing;
+                if (sheet == null) return;
+
+                int frameCount = Math.Max(1, sheet.FrameCount);
+                // Animate only when actively pressing W/S; otherwise hold first frame
+                frameIndex = player.IsRopeClimbing
+                             ? (int)(AnimationClock.Time * sheet.Fps) % frameCount
+                             : 0;
+
+                scale = sheet.FrameHeight > 0
+                        ? Player.StandingHeightPx / sheet.FrameHeight
+                        : 1f;
+
+                // Rotation so sprite "top" points toward the rope anchor.
+                // Unrotated sprite top = screen vector (0,−1).
+                // After clockwise rotation θ it becomes (−sinθ, −cosθ).
+                // Setting equal to anchorDir: sinθ = −dx, cosθ = −dy
+                // → θ = atan2(−anchorDir.X, −anchorDir.Y)
+                Vector2 toAnchor = player.ActiveRopeAnchorPixels!.Value - player.PixelPosition;
+                if (toAnchor.LengthSquared() < 0.01f) toAnchor = new Vector2(0f, -1f);
+                toAnchor.Normalize();
+                rotation = MathF.Atan2(-toAnchor.X, -toAnchor.Y);
+
+                effects = player.FacingDirection < 0
+                          ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
             }
             else
             {
-                rotation = 0f;
-                effects  = player.FacingDirection < 0
-                           ? SpriteEffects.FlipHorizontally
-                           : SpriteEffects.None;
+                // ── All other states: standard logic ──────────────────────────
+                sheet = PickSheet(assets, player.State);
+                if (sheet == null) return;
+
+                int frameCount = Math.Max(1, sheet.FrameCount);
+                frameIndex = (int)(AnimationClock.Time * sheet.Fps) % frameCount;
+                scale      = sheet.FrameHeight > 0
+                             ? Player.StandingHeightPx / sheet.FrameHeight : 1f;
+
+                if (IsClimbingState(player.State))
+                {
+                    // Rotate −90° so the sprite faces upward.
+                    rotation = -MathF.PI / 2f;
+                    // Flip when facing left so the character always faces toward the wall.
+                    effects  = player.FacingDirection < 0
+                               ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                }
+                else
+                {
+                    rotation = 0f;
+                    effects  = player.FacingDirection < 0
+                               ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                }
             }
 
             // ── Draw ───────────────────────────────────────────────────────────
+            var srcRect = sheet.GetSourceRect(frameIndex);
+            var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
+
             sb.Draw(
                 sheet.Texture,
                 player.PixelPosition,
@@ -91,11 +137,10 @@ namespace Bloop.Rendering
 
         // ── Helpers ────────────────────────────────────────────────────────────
 
+        // Climbing and Sliding use the −90° wall/vine rotation.
+        // Rappelling and Swinging are handled by the rope-attach branches above.
         private static bool IsClimbingState(PlayerState state)
-            => state is PlayerState.Climbing
-                     or PlayerState.Sliding
-                     or PlayerState.Rappelling
-                     or PlayerState.Swinging;
+            => state is PlayerState.Climbing or PlayerState.Sliding;
 
         private static PlayerSpritesheet? PickSheet(AssetManager assets, PlayerState state)
             => state switch
@@ -110,9 +155,7 @@ namespace Bloop.Rendering
                     or PlayerState.Mantling                                  => assets.PlayerJumping,
 
                 PlayerState.Climbing
-                    or PlayerState.Sliding
-                    or PlayerState.Rappelling
-                    or PlayerState.Swinging                                  => assets.PlayerClimbing,
+                    or PlayerState.Sliding                                   => assets.PlayerClimbing,
 
                 PlayerState.Controlling                                      => assets.PlayerControlling,
 

@@ -25,10 +25,11 @@ namespace Bloop
         private SpriteBatch _spriteBatch = null!;
 
         // ── Core systems ───────────────────────────────────────────────────────
-        public static AssetManager      Assets     { get; private set; } = null!;
-        public static ScreenManager     Screens    { get; private set; } = null!;
-        public static ResolutionManager Resolution { get; private set; } = null!;
-        public static LightingSystem?   Lighting   { get; private set; }
+        public static AssetManager      Assets            { get; private set; } = null!;
+        public static ScreenManager     Screens           { get; private set; } = null!;
+        public static ResolutionManager Resolution        { get; private set; } = null!;
+        public static LightingSystem?   Lighting          { get; private set; }
+        public static Effect?           ChromaticEffect   { get; private set; }
 
         // ── Taskbar margin (pixels reserved for OS taskbar in windowed mode) ───
         private const int TaskbarMargin = 72;
@@ -115,6 +116,9 @@ namespace Bloop
             // Subscribe LightingSystem to window resize events
             Resolution.WindowResized += (w, h) => Lighting?.OnResize(w, h);
 
+            // Load chromatic aberration shader (degrades gracefully if missing)
+            try { ChromaticEffect = Content.Load<Effect>("Shaders/ChromaticAberration"); } catch { }
+
             // Initialize screen manager and push the main menu
             Screens = new ScreenManager(GraphicsDevice, _spriteBatch);
 
@@ -157,6 +161,7 @@ namespace Bloop
         {
             Assets?.Dispose();
             Lighting?.Dispose();
+            ChromaticEffect?.Dispose();
             Resolution?.Dispose();
             base.UnloadContent();
         }

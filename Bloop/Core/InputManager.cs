@@ -208,5 +208,15 @@ namespace Bloop.Core
             if (IsKeyHeld(Keys.S) || IsKeyHeld(Keys.Down)) axis += 1f;
             return axis;
         }
+
+        /// <summary>True if any key was pressed this frame (not held from last frame).</summary>
+        public bool IsAnyKeyPressed()
+        {
+            var pressed = _currentKeyboard.GetPressedKeys();
+            if (pressed.Length == 0) return false;
+            foreach (var k in pressed)
+                if (_previousKeyboard.IsKeyUp(k)) return true;
+            return false;
+        }
     }
 }
