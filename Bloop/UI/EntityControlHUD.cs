@@ -28,14 +28,15 @@ namespace Bloop.UI
         // ── Layout constants ───────────────────────────────────────────────────
         private const float ButtonRadius    = 22f;
         private const float ButtonCenterX   = 640f; // virtual 1280×720 center
-        private const float ButtonCenterY   = 680f; // near bottom
+        // Positioned above the ActionButtonBar (which sits at vh-44-12 = vh-56 at 720)
+        private const float ButtonCenterY   = 620f;
         private const float CooldownRingThickness = 3f;
 
         private const float ControlBarWidth  = 300f;
         private const float ControlBarHeight = 8f;
         private const float ControlBarY      = 20f;  // from top
 
-        private const float PromptY = 650f;
+        private const float PromptY = 578f;
 
         // ── Colors ─────────────────────────────────────────────────────────────
         private static readonly Color ButtonReadyColor    = new Color(80, 220, 255, 220);
@@ -131,14 +132,14 @@ namespace Bloop.UI
             }
 
             // "Q" label
-            assets.DrawStringCentered(sb, "Q", cy - 6f, ButtonLabelColor, 0.9f);
+            assets.DrawStringCentered(sb, "Q", cy - 6f, ButtonLabelColor, 1.0f);
 
             // Cooldown timer text (when on cooldown)
             if (!ready && _controlSystem.CooldownTimer > 0f)
             {
                 string timerText = $"{_controlSystem.CooldownTimer:F0}s";
                 assets.DrawStringCentered(sb, timerText, cy + 8f,
-                    new Color(180, 180, 180, 180), 0.6f);
+                    new Color(180, 180, 180, 180), 0.75f);
             }
 
             // Skill description above Q button (shown while controlling)
@@ -148,7 +149,7 @@ namespace Bloop.UI
                 if (skill != null && !string.IsNullOrEmpty(skill.Description))
                 {
                     assets.DrawStringCentered(sb, skill.Description,
-                        (ButtonCenterY - 40f) * scaleY, SkillDescriptionColor, 0.65f);
+                        (ButtonCenterY - 40f) * scaleY, SkillDescriptionColor, 0.78f);
                 }
             }
 
@@ -212,12 +213,12 @@ namespace Bloop.UI
                     ? $"[E] {entity.Skill.Name}"
                     : $"[E] {entity.Skill.Name}  ({entity.Skill.CooldownTimer:F1}s)";
                 assets.DrawStringCentered(sb, skillText,
-                    barY + barH + 4f * scaleY, SkillNameColor, 0.65f);
+                    barY + barH + 4f * scaleY, SkillNameColor, 0.78f);
             }
 
             // RMB release prompt
             assets.DrawStringCentered(sb, "RMB: Release",
-                barY + barH + 18f * scaleY, PromptColor, 0.6f);
+                barY + barH + 20f * scaleY, PromptColor, 0.75f);
         }
 
         // ── Isopod attached UI ─────────────────────────────────────────────────
@@ -256,7 +257,7 @@ namespace Bloop.UI
             }
 
             // T: Throw prompt
-            assets.DrawStringCentered(sb, "[T] Throw", cy + 26f * scaleY, PromptColor, 0.65f);
+            assets.DrawStringCentered(sb, "[T] Throw", cy + 26f * scaleY, PromptColor, 0.78f);
 
             // Glow Surge cooldown
             if (isopod.Skill != null)

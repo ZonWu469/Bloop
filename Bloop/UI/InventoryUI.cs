@@ -228,7 +228,7 @@ namespace Bloop.UI
 
                     assets.DrawString(spriteBatch,
                         $"[{name}] {time}",
-                        new Vector2(cx + 4, cy), col, 0.72f);
+                        new Vector2(cx + 4, cy), col, 0.78f);
                     cy += 16;
                 }
             }
@@ -237,7 +237,7 @@ namespace Bloop.UI
             cy += 2;
             assets.DrawString(spriteBatch,
                 "↑↓ Navigate   E Use   Tab Close",
-                new Vector2(cx, cy), HintColor, 0.65f);
+                new Vector2(cx, cy), HintColor, 0.75f);
         }
 
         // ── Private helpers ────────────────────────────────────────────────────

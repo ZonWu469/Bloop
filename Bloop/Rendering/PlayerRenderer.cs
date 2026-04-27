@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Bloop.Core;
@@ -58,7 +58,7 @@ namespace Bloop.Rendering
                 int frameCount = Math.Max(1, sheet.FrameCount);
                 frameIndex = (int)(AnimationClock.Time * sheet.Fps) % frameCount;
                 scale      = sheet.FrameHeight > 0
-                             ? Player.StandingHeightPx / sheet.FrameHeight : 1f;
+                             ? Player.StandingHeightPx / sheet.FrameHeight * 0.7f : 1f;
                 rotation   = 0f;
                 effects    = player.FacingDirection < 0
                              ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
@@ -81,13 +81,13 @@ namespace Bloop.Rendering
 
                 // Rotation so sprite "top" points toward the rope anchor.
                 // Unrotated sprite top = screen vector (0,−1).
-                // After clockwise rotation θ it becomes (−sinθ, −cosθ).
-                // Setting equal to anchorDir: sinθ = −dx, cosθ = −dy
-                // → θ = atan2(−anchorDir.X, −anchorDir.Y)
+                // After clockwise rotation θ it becomes (sinθ, −cosθ).
+                // Setting equal to anchorDir: sinθ = dx, −cosθ = dy
+                // → θ = atan2(anchorDir.X, −anchorDir.Y)
                 Vector2 toAnchor = player.ActiveRopeAnchorPixels!.Value - player.PixelPosition;
                 if (toAnchor.LengthSquared() < 0.01f) toAnchor = new Vector2(0f, -1f);
                 toAnchor.Normalize();
-                rotation = MathF.Atan2(-toAnchor.X, -toAnchor.Y);
+                rotation = MathF.Atan2(toAnchor.X, -toAnchor.Y);
 
                 effects = player.FacingDirection < 0
                           ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
@@ -100,10 +100,11 @@ namespace Bloop.Rendering
 
                 int frameCount = Math.Max(1, sheet.FrameCount);
                 frameIndex = (int)(AnimationClock.Time * sheet.Fps) % frameCount;
+                bool isClimbing = IsClimbingState(player.State);
                 scale      = sheet.FrameHeight > 0
-                             ? Player.StandingHeightPx / sheet.FrameHeight : 1f;
+                             ? Player.StandingHeightPx / sheet.FrameHeight * (isClimbing ? 1f : 0.7f) : 1f;
 
-                if (IsClimbingState(player.State))
+                if (isClimbing)
                 {
                     // Rotate −90° so the sprite faces upward.
                     rotation = -MathF.PI / 2f;

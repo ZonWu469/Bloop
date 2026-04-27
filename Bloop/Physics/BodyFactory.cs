@@ -58,7 +58,8 @@ namespace Bloop.Physics
 
             // Foot sensor (slightly below body bottom, used for ground detection)
             var footOffset  = new Vector2(0f, halfH + PhysicsManager.ToMeters(3f));
-            var footFixture = body.CreateRectangle(halfW * 1.6f, PhysicsManager.ToMeters(6f), 0f, footOffset);
+            // 1.15× width prevents false-grounded readings across 1-tile gaps
+            var footFixture = body.CreateRectangle(halfW * 1.15f, PhysicsManager.ToMeters(6f), 0f, footOffset);
             footFixture.IsSensor            = true;
             footFixture.CollisionCategories = CollisionCategories.Player;
             footFixture.CollidesWith        = CollisionCategories.Terrain |

@@ -57,6 +57,10 @@ namespace Bloop.Screens
         // ── Player trail effect (3.5) ──────────────────────────────────────────
         private readonly TrailEffect _trail = new TrailEffect();
 
+        // ── Landing detection (for landing dust) ───────────────────────────────
+        private PlayerState _prevPlayerState = PlayerState.Idle;
+        private float       _prevFallSpeedPx = 0f;
+
         // ── HUD smooth display fractions (Task 9) ─────────────────────────────
         private float _displayLantern = 1f;
         private float _displayBreath  = 1f;
@@ -205,6 +209,13 @@ namespace Bloop.Screens
             _momentum.OnShakeRequested = (amplitude, duration) =>
                 _camera?.Shake(amplitude, duration);
 
+            // Grapple hook anchor: small shake + radial particle burst at contact point
+            _grapple.OnAnchored += (pos, color) =>
+            {
+                _camera?.Shake(4f, 0.10f);
+                _trail.SpawnGrappleFlash(pos, color);
+            };
+
             // ── Wire damage flash (Task 13.1) ──────────────────────────────────
             _player.OnDamageReceived = (_) =>
                 _damageFlashTimer = DamageFlashDuration;
@@ -325,6 +336,17 @@ namespace Bloop.Screens
             // ── Update player trail effect (3.5) ───────────────────────────────
             _trail.Update(dt, _player);
 
+            // ── Landing dust (transition from aerial to grounded) ───────────────
+            bool wasAerial = _prevPlayerState == PlayerState.Falling
+                          || _prevPlayerState == PlayerState.Jumping
+                          || _prevPlayerState == PlayerState.WallJumping;
+            bool justLanded = wasAerial && _player.IsGrounded;
+            if (justLanded && _prevFallSpeedPx > 80f)
+                _trail.SpawnLandingDust(_player.PixelPosition, _prevFallSpeedPx);
+
+            _prevPlayerState = _player.State;
+            _prevFallSpeedPx = MathF.Max(_player.PixelVelocity.Y, 0f);
+
             // ── Update lighting system ─────────────────────────────────────────
             Game1.Lighting?.Update(gameTime);
             UpdateLighting(dt);
@@ -342,6 +364,9 @@ namespace Bloop.Screens
                                     _entityControl.ActiveEntity != null)
                 ? _entityControl.ActiveEntity.PixelPosition
                 : _player.PixelPosition;
+
+            // Lookahead: bias toward player velocity so they can see where they're going
+            _camera.SetLookahead(_player.PixelVelocity);
             _camera.Follow(cameraTarget, gameTime);
 
             // ── Smooth HUD display fractions (Task 9) ─────────────────────────
@@ -954,7 +979,7 @@ namespace Bloop.Screens
             if (_player == null) return;
 
             const int barW  = 160;
-            const int barH  = 14;
+            const int barH  = 18;
             const int barX  = 16;
             const int iconW = 14;
             int y = 16;
@@ -988,7 +1013,7 @@ namespace Bloop.Screens
             GeometryBatch.DrawDiamond(spriteBatch, assets,
                 new Vector2(barX + iconW / 2f, y + barH / 2f), 5f,
                 lanternFill * (lanternLow ? 0.6f + AnimationClock.Pulse(4f) * 0.4f : 0.9f));
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Breath meter (Task 9) ──────────────────────────────────────────
             bool breathLow = _displayBreath < 0.25f;
@@ -1004,7 +1029,7 @@ namespace Bloop.Screens
             GeometryBatch.DrawCircleApprox(spriteBatch, assets,
                 new Vector2(barX + iconW / 2f, y + barH / 2f), 4f,
                 breathFill * 0.9f, 6);
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Health bar (Task 9) ────────────────────────────────────────────
             bool healthLow = _displayHealth < 0.2f;
@@ -1023,7 +1048,7 @@ namespace Bloop.Screens
             GeometryBatch.DrawDiamond(spriteBatch, assets,
                 new Vector2(barX + iconW / 2f + 2, y + barH / 2f), 3f,
                 healthFill * 0.9f);
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Kinetic charge bar (Task 9) ────────────────────────────────────
             bool kineticFull = _displayKinetic >= 0.99f;
@@ -1039,7 +1064,7 @@ namespace Bloop.Screens
             assets.DrawRect(spriteBatch,
                 new Rectangle(barX + iconW / 2 - 1, y + 2, 2, barH - 4),
                 kineticFill * 0.9f);
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Sanity bar ─────────────────────────────────────────────────────
             {
@@ -1078,7 +1103,7 @@ namespace Bloop.Screens
                     new Rectangle(ix + is_ / 2 - 1, iy + is_ / 2 - 1, 3, 3),
                     sanityFill * 0.9f);
             }
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Flare count ────────────────────────────────────────────────────
             assets.DrawString(spriteBatch, "Flares", new Vector2(barX, y), TextColor, 0.75f);
@@ -1094,7 +1119,7 @@ namespace Bloop.Screens
                     GeometryBatch.DrawDiamondOutline(spriteBatch, assets, iconPos, 5f,
                         new Color(80, 60, 30), 1f);
             }
-            y += barH + 6;
+            y += barH + 8;
 
             // ── Weight display ─────────────────────────────────────────────────
             float weight    = _player.Inventory.TotalWeight;
@@ -1114,8 +1139,8 @@ namespace Bloop.Screens
                     Color  col  = DebuffSystem.GetDisplayColor(debuff.Type);
                     assets.DrawString(spriteBatch,
                         $"[{name}] {debuff.RemainingTime:0.0}s",
-                        new Vector2(barX, y), col, 0.7f);
-                    y += 14;
+                        new Vector2(barX, y), col, 0.78f);
+                    y += 16;
                 }
             }
 
@@ -1167,24 +1192,31 @@ namespace Bloop.Screens
                 }
             }
 
-            // ── Depth + seed info ──────────────────────────────────────────────
-            assets.DrawString(spriteBatch,
-                $"Depth: {Depth}   Seed: {Seed}",
-                new Vector2(vw - 200f, 16f), TextColor, 0.8f);
-
-            // ── State indicator ────────────────────────────────────────────────
-            assets.DrawString(spriteBatch,
-                $"State: {_player.State}",
-                new Vector2(vw - 200f, 36f), new Color(120, 140, 160), 0.75f);
-
-            // ── Lighting status ────────────────────────────────────────────────
-            var lighting = Game1.Lighting;
-            if (lighting != null)
+            // ── Depth + seed + state (hidden when inventory panel is open) ──────
+            if (!_inventoryUI.IsVisible)
             {
-                string lightingStatus = lighting.Enabled ? "Lighting: ON" : "Lighting: OFF (F2)";
-                assets.DrawString(spriteBatch,
-                    lightingStatus,
-                    new Vector2(vw - 200f, 56f), new Color(100, 120, 100), 0.7f);
+                const float infoScale = 0.8f;
+                if (assets.GameFont != null)
+                {
+                    string depthText = $"Depth: {Depth}   Seed: {Seed}";
+                    float depthW = assets.GameFont.MeasureString(depthText).X * infoScale;
+                    assets.DrawString(spriteBatch, depthText,
+                        new Vector2(vw - depthW - 12f, 16f), TextColor, infoScale);
+
+                    string stateText = $"State: {_player.State}";
+                    float stateW = assets.GameFont.MeasureString(stateText).X * 0.78f;
+                    assets.DrawString(spriteBatch, stateText,
+                        new Vector2(vw - stateW - 12f, 32f), new Color(120, 140, 160), 0.78f);
+                }
+
+                var lighting = Game1.Lighting;
+                if (lighting != null && assets.GameFont != null)
+                {
+                    string lightingStatus = lighting.Enabled ? "Lighting: ON" : "Lighting: OFF (F2)";
+                    float lightW = assets.GameFont.MeasureString(lightingStatus).X * 0.78f;
+                    assets.DrawString(spriteBatch, lightingStatus,
+                        new Vector2(vw - lightW - 12f, 48f), new Color(100, 120, 100), 0.78f);
+                }
             }
 
             // ── Action button bar (Task 8) — replaces text controls strip ──────
@@ -1205,8 +1237,15 @@ namespace Bloop.Screens
                 assets.DrawRect(spriteBatch, new Rectangle(x, y, fillW, h), fillColor);
             // Border
             assets.DrawRectOutline(spriteBatch, new Rectangle(x, y, w, h), new Color(60, 80, 100), 1);
-            // Label
-            assets.DrawString(spriteBatch, label, new Vector2(x + w + 6, y), TextColor, 0.7f);
+            // Label centered inside bar
+            if (assets.GameFont != null)
+            {
+                const float labelScale = 0.72f;
+                Vector2 labelSize = assets.GameFont.MeasureString(label) * labelScale;
+                float lx = x + (w - labelSize.X) / 2f;
+                float ly = y + (h - labelSize.Y) / 2f;
+                assets.DrawString(spriteBatch, label, new Vector2(lx, ly), TextColor * 0.92f, labelScale);
+            }
         }
     }
 }

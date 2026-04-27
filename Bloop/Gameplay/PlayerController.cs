@@ -457,6 +457,11 @@ namespace Bloop.Gameplay
 
                 float horiz = _input.GetHorizontalAxis() * ClimbSpeed * 0.5f;
                 _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(horiz, vert));
+
+                // Try to mantle over the top edge when climbing upward
+                if (vert < 0f)
+                    CheckLedgeGrabFromCling();
+
                 return; // skip normal movement while climbing
             }
             else if (_player.State == PlayerState.Climbing && !_input.IsClimbHeld())
@@ -500,9 +505,22 @@ namespace Bloop.Gameplay
                          _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.S) ||
                          _input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.Down));
 
-                    // Apply small horizontal force to swing direction
-                    float swingForce = _input.GetHorizontalAxis() * MoveForce * 0.4f;
-                    _player.Body.ApplyForce(PhysicsManager.ToMeters(new Vector2(swingForce, 0f)));
+                    // Apply tangential force (perpendicular to rope) so input drives the pendulum arc
+                    // rather than wasting energy on radial stretch that the RopeJoint absorbs.
+                    float inputX = _input.GetHorizontalAxis();
+                    if (inputX != 0f)
+                    {
+                        Vector2 toAnchor = PhysicsManager.ToMeters(_grapple.AnchorPixelPos) - _player.Body.Position;
+                        if (toAnchor.LengthSquared() > 0.0001f)
+                        {
+                            toAnchor.Normalize();
+                            // In screen-space (Y+ down): perpendicular = (-toAnchor.Y, toAnchor.X).
+                            // Flip so that positive inputX always produces a rightward swing.
+                            Vector2 tangent = new Vector2(-toAnchor.Y, toAnchor.X);
+                            if (tangent.X < 0f) tangent = -tangent;
+                            _player.Body.ApplyForce(PhysicsManager.ToMeters(tangent * inputX * MoveForce * 0.4f));
+                        }
+                    }
 
                     // Climb the rope: W/Up shortens it (reel in), S/Down extends it
                     if (_input.IsKeyHeld(Microsoft.Xna.Framework.Input.Keys.W) ||
@@ -573,7 +591,8 @@ namespace Bloop.Gameplay
                 if (_player.IsGrounded)
                 {
                     var vel = _player.Body.LinearVelocity;
-                    _player.Body.LinearVelocity = new Vector2(vel.X * 0.75f, vel.Y);
+                    // Frame-rate-independent friction: same deceleration at any Hz
+                    _player.Body.LinearVelocity = new Vector2(vel.X * MathF.Pow(0.75f, dt * 60f), vel.Y);
 
                     if (_player.State == PlayerState.Walking)
                         _player.SetState(PlayerState.Idle);
@@ -681,6 +700,13 @@ namespace Bloop.Gameplay
             // ── Sliding detection ──────────────────────────────────────────────
             // Sliding is triggered by MomentumSystem when slope contact is detected
             _momentum.Update(gameTime, _player);
+
+            // ── Corner correction: nudge past ceiling corners when jumping ──────
+            // When the player's shoulder clips one corner of a ceiling tile but the
+            // other side is clear, push them horizontally (up to 6px) so they slip
+            // past instead of stalling. Only fires when moving upward.
+            if (_player.Body.LinearVelocity.Y < 0f)
+                ApplyCornerCorrection();
 
             // ── Hard velocity clamp (B4) ───────────────────────────────────────
             // Prevent slingshot/grapple launches and long falls from producing
@@ -877,8 +903,8 @@ namespace Bloop.Gameplay
             float horiz = _input.GetHorizontalAxis();
             if (horiz == 0f) return; // must be pressing toward a wall
 
-            // Side to check: positive input = right side, negative = left side
-            float sideX = pos.X + (horiz > 0 ? halfW + 2f : -(halfW + 2f));
+            // Side to check: 6px reach beyond body edge for gentle ledge magnetism
+            float sideX = pos.X + (horiz > 0 ? halfW + 6f : -(halfW + 6f));
 
             // Tile coordinates
             int wallTx   = (int)(sideX  / ts);
@@ -967,6 +993,59 @@ namespace Bloop.Gameplay
             // Mantle: stand on top of the blocking tile
             float targetY = headTy * ts - halfH;
             _player.StartMantle(new Vector2(pos.X, targetY));
+        }
+
+        // ── Corner correction (ceiling / narrow gap) ───────────────────────────
+
+        /// <summary>
+        /// When the player's body edge clips exactly one corner of a ceiling tile while
+        /// the opposite side is clear, nudge them horizontally (≤ 6 px) to slip past.
+        /// Prevents "invisible wall" feel on tight vertical jumps.
+        /// Only called when moving upward (LinearVelocity.Y &lt; 0).
+        /// </summary>
+        private void ApplyCornerCorrection()
+        {
+            if (_tileMap == null) return;
+
+            int ts = TileMap.TileSize;
+            Vector2 pos  = _player.PixelPosition;
+            float halfW  = Player.WidthPx / 2f;
+            float halfH  = _player.CurrentHeightPx / 2f;
+
+            // Sample 1 px above the player's head
+            float headY = pos.Y - halfH - 1f;
+            if (headY < 0f) return;
+            int headTy = (int)(headY / ts);
+            if (headTy < 0 || headTy >= _tileMap.Height) return;
+
+            // Left and right inner edges (2 px inward so trivial wall contacts don't trigger)
+            float leftX  = pos.X - halfW + 2f;
+            float rightX = pos.X + halfW - 2f;
+            int leftTx   = (int)(leftX  / ts);
+            int rightTx  = (int)(rightX / ts);
+            if (leftTx < 0 || rightTx >= _tileMap.Width) return;
+
+            bool leftSolid  = TileProperties.IsSolid(_tileMap.GetTile(leftTx,  headTy));
+            bool rightSolid = TileProperties.IsSolid(_tileMap.GetTile(rightTx, headTy));
+
+            const float MaxNudge = 6f;
+
+            if (leftSolid && !rightSolid)
+            {
+                // Left shoulder in ceiling tile — nudge right
+                float clearEdge = (leftTx + 1) * ts;
+                float overlap   = clearEdge - leftX;
+                if (overlap > 0f && overlap <= MaxNudge)
+                    _player.Body.Position += PhysicsManager.ToMeters(new Vector2(overlap, 0f));
+            }
+            else if (!leftSolid && rightSolid)
+            {
+                // Right shoulder in ceiling tile — nudge left
+                float blockLeft = rightTx * ts;
+                float overlap   = rightX - blockLeft;
+                if (overlap > 0f && overlap <= MaxNudge)
+                    _player.Body.Position -= PhysicsManager.ToMeters(new Vector2(overlap, 0f));
+            }
         }
 
         // ── Flare trajectory preview ───────────────────────────────────────────

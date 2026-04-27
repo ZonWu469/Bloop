@@ -41,6 +41,8 @@ namespace Bloop.Effects
         private float _sparkTimer    = 0f;
         private float _dustTimer     = 0f;
         private float _launchTimer   = 0f;
+        private float _footstepDist  = 0f; // accumulated horizontal distance for footstep dust
+        private Vector2 _lastPos     = Vector2.Zero;
 
         // ── Wall-jump flash ────────────────────────────────────────────────────
         private Vector2 _wallFlashPos;
@@ -54,6 +56,8 @@ namespace Bloop.Effects
         private static readonly Color ColLaunch1 = new Color(160, 220, 255);
         private static readonly Color ColLaunch2 = new Color(255, 255, 255);
         private static readonly Color ColWallFlash = new Color(255, 240, 120);
+        private static readonly Color ColFootDust  = new Color(160, 150, 130);
+        private static readonly Color ColLandDust  = new Color(200, 180, 140);
 
         // ── Random ────────────────────────────────────────────────────────────
         private readonly Random _rng = new Random();
@@ -93,6 +97,16 @@ namespace Bloop.Effects
 
             switch (player.State)
             {
+                case PlayerState.Walking:
+                    // Footstep dust every 24px of horizontal travel
+                    _footstepDist += Math.Abs(pos.X - _lastPos.X);
+                    if (_footstepDist >= 24f)
+                    {
+                        _footstepDist = 0f;
+                        SpawnFootstepDust(pos);
+                    }
+                    break;
+
                 case PlayerState.Sliding:
                     _sparkTimer -= dt;
                     if (_sparkTimer <= 0f)
@@ -133,11 +147,14 @@ namespace Bloop.Effects
 
                 default:
                     // Reset timers when not in trail-emitting states
-                    _sparkTimer  = 0f;
-                    _dustTimer   = 0f;
-                    _launchTimer = 0f;
+                    _sparkTimer    = 0f;
+                    _dustTimer     = 0f;
+                    _launchTimer   = 0f;
+                    _footstepDist  = 0f;
                     break;
             }
+
+            _lastPos = pos;
         }
 
         /// <summary>
@@ -174,7 +191,60 @@ namespace Bloop.Effects
             }
         }
 
+        // ── Public one-shot effects ────────────────────────────────────────────
+
+        /// <summary>Landing dust ring scaled by fall speed (px/s).</summary>
+        public void SpawnLandingDust(Vector2 pos, float fallSpeedPx)
+        {
+            float intensity = MathHelper.Clamp(fallSpeedPx / 400f, 0f, 1f);
+            int count = 4 + (int)(intensity * 8f);
+            for (int i = 0; i < count; i++)
+            {
+                float angle = (float)(_rng.NextDouble() * Math.PI); // upper hemisphere
+                float speed = 40f + (float)_rng.NextDouble() * 80f * intensity;
+                float vx = (float)Math.Cos(angle) * speed * (_rng.NextDouble() < 0.5 ? 1 : -1);
+                float vy = -(float)Math.Sin(angle) * speed * 0.5f;
+                Emit(
+                    pos + new Vector2((float)(_rng.NextDouble() - 0.5) * 12f, 6f),
+                    new Vector2(vx, vy),
+                    ColLandDust,
+                    size: 2f + intensity * 2f,
+                    life: 0.2f + (float)_rng.NextDouble() * 0.2f * intensity);
+            }
+        }
+
+        /// <summary>Radial particle burst at grapple anchor point.</summary>
+        public void SpawnGrappleFlash(Vector2 pos, Color color)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                double angle = _rng.NextDouble() * Math.PI * 2.0;
+                float  speed = 60f + (float)_rng.NextDouble() * 80f;
+                Emit(
+                    pos,
+                    new Vector2((float)Math.Cos(angle) * speed, (float)Math.Sin(angle) * speed),
+                    color,
+                    size: 3f,
+                    life: 0.15f + (float)_rng.NextDouble() * 0.1f);
+            }
+        }
+
         // ── Spawn helpers ──────────────────────────────────────────────────────
+
+        private void SpawnFootstepDust(Vector2 pos)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                float vx = (float)(_rng.NextDouble() - 0.5) * 30f;
+                float vy = -15f - (float)_rng.NextDouble() * 20f;
+                Emit(
+                    pos + new Vector2((float)(_rng.NextDouble() - 0.5) * 10f, 8f),
+                    new Vector2(vx, vy),
+                    ColFootDust,
+                    size: 2f,
+                    life: 0.18f + (float)_rng.NextDouble() * 0.12f);
+            }
+        }
 
         private void SpawnSlidingSparks(Vector2 pos, Vector2 vel)
         {

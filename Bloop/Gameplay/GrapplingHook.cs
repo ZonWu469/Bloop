@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using nkast.Aether.Physics2D.Dynamics;
@@ -58,9 +59,23 @@ namespace Bloop.Gameplay
         private Vector2        _pendingAnchorPos;    // in meter space
         private Vector2        _pendingPlayerPosMeters; // player position captured at collision time
 
+        // ── Anchor surface type (for color-coding) ─────────────────────────────
+        private nkast.Aether.Physics2D.Dynamics.Category _pendingAnchorSurface;
+
+        // ── Swing arc tracking (for arc-scaled release) ────────────────────────
+        private float _swingInitialAngle  = 0f;
+        private float _swingMaxArcAngle   = 0f;
+
         public bool IsFlying   => _isFlying;
         public bool IsAnchored => _isAnchored;
         public Vector2 AnchorPixelPos => _anchorPixelPos;
+
+        // ── Impact feedback event ──────────────────────────────────────────────
+        /// <summary>
+        /// Fires when the hook anchor is finalized. Parameters: world-pixel position,
+        /// surface color (terrain/climbable/crystal). Wire to Camera.Shake + particle burst.
+        /// </summary>
+        public event Action<Vector2, Color>? OnAnchored;
 
         // ── Rope wrap system ───────────────────────────────────────────────────
         private readonly RopeWrapSystem _wrapSystem;
@@ -165,8 +180,11 @@ namespace Bloop.Gameplay
                     Vector2 radialVelocity      = radial * radialComponent;
                     Vector2 tangentialVelocity  = vel - radialVelocity;
 
-                    // Boost tangential component by 1.3×, leave radial unchanged
-                    _ownerPlayer.Body.LinearVelocity = radialVelocity + tangentialVelocity * 1.3f;
+                    // Arc-scaled tangential boost: 1.0× at 0 rad → 1.6× at ≥ π/2 rad
+                    // Rewards players who let the swing develop fully.
+                    float arcFraction = MathHelper.Clamp(_swingMaxArcAngle / (MathF.PI / 2f), 0f, 1f);
+                    float tangBoost   = MathHelper.Lerp(1.0f, 1.6f, arcFraction);
+                    _ownerPlayer.Body.LinearVelocity = radialVelocity + tangentialVelocity * tangBoost;
                 }
             }
 
@@ -262,8 +280,35 @@ namespace Bloop.Gameplay
                 // The player stays where they are when the hook anchors.
                 // Gravity and player input drive the swing naturally.
 
+                // ── Swing arc tracking — reset on each new anchor ──────────────
+                Vector2 toPlayer = _ownerPlayer.Body.Position - _pendingAnchorPos;
+                _swingInitialAngle = MathF.Atan2(toPlayer.Y, toPlayer.X);
+                _swingMaxArcAngle  = 0f;
+
+                // ── Impact feedback ────────────────────────────────────────────
+                Color anchorColor = _pendingAnchorSurface == CollisionCategories.CrystalBridge
+                    ? new Color(220, 120, 255)   // magenta for crystal
+                    : _pendingAnchorSurface == CollisionCategories.Climbable
+                        ? new Color(60, 220, 200) // teal for climbable
+                        : new Color(255, 220, 80); // warm yellow for terrain
+                OnAnchored?.Invoke(_anchorPixelPos, anchorColor);
+
                 _isAnchored    = true;
                 _pendingAnchor = false;
+            }
+
+            // ── Arc tracking: accumulate max angular displacement while swinging ─
+            if (_isAnchored && _ownerPlayer != null &&
+                _ownerPlayer.State == PlayerState.Swinging)
+            {
+                Vector2 delta = _ownerPlayer.Body.Position - _pendingAnchorPos;
+                if (delta.LengthSquared() > 0.0001f)
+                {
+                    float angle = MathF.Atan2(delta.Y, delta.X);
+                    float diff  = MathF.Abs(WrapAngle(angle - _swingInitialAngle));
+                    if (diff > _swingMaxArcAngle)
+                        _swingMaxArcAngle = diff;
+                }
             }
 
             // Update wrap system while anchored
@@ -452,10 +497,19 @@ namespace Bloop.Gameplay
                 _pendingAnchorPos = contactPoints[0]; // meter space — first contact point
             }
             _pendingPlayerPosMeters = _ownerPlayer.Body.Position; // capture now, before player falls further
+            _pendingAnchorSurface   = other.CollisionCategories;
 
             _pendingAnchor = true;
 
             return true;
+        }
+
+        /// <summary>Wrap an angle to [-π, π] for arc delta calculations.</summary>
+        private static float WrapAngle(float angle)
+        {
+            while (angle > MathF.PI)  angle -= MathF.PI * 2f;
+            while (angle < -MathF.PI) angle += MathF.PI * 2f;
+            return angle;
         }
 
         /// <summary>Destroy only the hook projectile body (not the anchor).</summary>

@@ -36,6 +36,11 @@ namespace Bloop.Core
         private Vector2 _shakeDir      = Vector2.UnitX; // primary shake axis
         private readonly Random _shakeRng = new Random();
 
+        // ── Lookahead bias ─────────────────────────────────────────────────────
+        private Vector2 _lookaheadBias  = Vector2.Zero;
+        private const float LookaheadScale  = 0.15f; // fraction of velocity → pixels bias
+        private const float MaxLookaheadPx  = 48f;   // clamp so bias doesn't over-scroll
+
         // ── Constructor ────────────────────────────────────────────────────────
         public Camera(Viewport viewport)
         {
@@ -60,7 +65,22 @@ namespace Bloop.Core
         /// <summary>Instantly snap the camera to a world position.</summary>
         public void SnapTo(Vector2 worldPosition)
         {
+            _lookaheadBias = Vector2.Zero;
             Position = Clamp(worldPosition);
+        }
+
+        /// <summary>
+        /// Update the velocity-based lookahead bias so the player can see ahead
+        /// of their movement. Call each frame with the player's pixel velocity.
+        /// </summary>
+        public void SetLookahead(Vector2 velocityPx)
+        {
+            Vector2 target = velocityPx * LookaheadScale;
+            float len = target.Length();
+            if (len > MaxLookaheadPx)
+                target = target / len * MaxLookaheadPx;
+            // Smooth the bias to avoid jitter on sudden direction changes
+            _lookaheadBias = Vector2.Lerp(_lookaheadBias, target, 0.08f);
         }
 
         /// <summary>
@@ -69,8 +89,8 @@ namespace Bloop.Core
         /// </summary>
         public void Follow(Vector2 targetWorldPosition, GameTime gameTime)
         {
-            // Lerp toward target
-            Vector2 desired = Clamp(targetWorldPosition);
+            // Lerp toward target + lookahead bias
+            Vector2 desired = Clamp(targetWorldPosition + _lookaheadBias);
             Position = Vector2.Lerp(Position, desired, 1f - Smoothing);
 
             // Tick screen shake

@@ -390,10 +390,11 @@ namespace Bloop.Gameplay
                 {
                     // Teleport to standing position on top of the ledge
                     Body.Position = PhysicsManager.ToMeters(_mantleTargetPixel);
-                    Body.LinearVelocity = Vector2.Zero;
+                    // Small upward pop so chained mantle→jump flows naturally
+                    Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, -40f));
                     Body.IgnoreGravity  = false;
                     Body.LinearDamping  = 0f;
-                    _peakFallVelMs = 0f; // safe on ledge — cancel any accumulated fall velocity
+                    _peakFallVelMs = 0f;
                     SetState(PlayerState.Idle);
                 }
                 return; // skip normal update during mantle
