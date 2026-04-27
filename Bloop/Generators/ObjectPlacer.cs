@@ -543,18 +543,54 @@ namespace Bloop.Generators
 
                 int startY = rng.Next(h / 5, 2 * h / 5);
                 int endY   = Math.Min(h - 5, startY + rng.Next(8, 20));
-                int dir    = rng.Next(2) == 0 ? 1 : -1; // staircase direction
 
                 int chainId    = placements.Count; // use current count as unique chain ID
                 int chainOrder = 0;
-                int curX       = tx + shaftWidth / 2;
+
+                // Determine the usable horizontal range within the shaft
+                int leftBound  = tx + 1;
+                int rightBound = tx + shaftWidth - 2;
+                // For very narrow shafts (width 3), leftBound == rightBound.
+                // In that case we cannot create a true staircase — place a single
+                // platform at the midpoint and skip.
+                if (leftBound >= rightBound)
+                {
+                    int midX = tx + shaftWidth / 2;
+                    int midY = (startY + endY) / 2;
+                    if (map.GetTile(midX, midY) == TileType.Empty)
+                    {
+                        placements.Add(new ObjectPlacement
+                        {
+                            Type          = ObjectType.DisappearingPlatform,
+                            PixelPosition = TileMap.TileCenter(midX, midY),
+                            ChainId       = chainId,
+                            ChainOrder    = chainOrder++,
+                        });
+                    }
+                    tx += shaftWidth;
+                    continue;
+                }
+
+                // For wider shafts, place platforms in an alternating bounce pattern
+                // so they form a traversable zigzag staircase.
+                // Start at one side, then alternate to the other side every few rows.
+                int curX        = rng.Next(2) == 0 ? leftBound : rightBound;
+                int prevPlacedY = -100; // track last placed row for vertical gap enforcement
 
                 for (int ty = startY; ty < endY; ty += 2)
                 {
-                    curX = Math.Clamp(curX + dir, tx + 1, tx + shaftWidth - 2);
+                    // Enforce minimum vertical gap (4 rows = 128px) between platforms
+                    // so the player can fit between them.
+                    if (ty - prevPlacedY < 4) continue;
+
+                    // Alternate: flip to the opposite side of the shaft
+                    curX = (curX == leftBound) ? rightBound : leftBound;
 
                     // Only place if this is an empty tile
                     if (map.GetTile(curX, ty) != TileType.Empty) continue;
+
+                    // Skip the last 3 rows of the shaft to leave bottom clearance
+                    if (ty > endY - 3) continue;
 
                     placements.Add(new ObjectPlacement
                     {
@@ -563,6 +599,8 @@ namespace Bloop.Generators
                         ChainId       = chainId,
                         ChainOrder    = chainOrder++,
                     });
+
+                    prevPlacedY = ty;
                 }
 
                 tx += shaftWidth; // skip past this shaft

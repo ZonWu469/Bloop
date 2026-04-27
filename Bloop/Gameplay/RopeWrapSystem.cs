@@ -143,7 +143,7 @@ namespace Bloop.Gameplay
             if (!addedWrap && _wrapPoints.Count > 0)
             {
                 Vector2 prevAnchorPixels = _wrapPoints.Count > 1
-                    ? _wrapPoints[_wrapPoints.Count - 1].PositionPixels
+                    ? _wrapPoints[_wrapPoints.Count - 2].PositionPixels
                     : primaryAnchorPixels;
 
                 // If the line from the previous anchor to the player is now clear,
@@ -284,10 +284,14 @@ namespace Bloop.Gameplay
             Vector2 cornerMeters = PhysicsManager.ToMeters(cornerPixels);
             var body = _world.CreateBody(cornerMeters, 0f, BodyType.Static);
 
-            // Create RopeJoint from wrap point to player
+            // Create RopeJoint from wrap point to player.
+            // MaxLength = max(actualDist + slack, theoretical) so the joint never
+            // immediately snaps a player who is mid-swing past the wrap corner.
             float newSegmentMeters = PhysicsManager.ToMeters(remainingLengthPixels);
+            const float SlackMeters = 0.05f; // ~3 px
+            float actualDistMeters = Vector2.Distance(cornerMeters, playerBody.Position);
             var joint = new RopeJoint(body, playerBody, Vector2.Zero, Vector2.Zero, false);
-            joint.MaxLength = Math.Max(0.1f, newSegmentMeters);
+            joint.MaxLength = Math.Max(actualDistMeters + SlackMeters, Math.Max(0.1f, newSegmentMeters));
             _world.Add(joint);
 
             _wrapPoints.Add(new WrapPoint
@@ -353,20 +357,20 @@ namespace Bloop.Gameplay
             Vector2 cornerMeters = PhysicsManager.ToMeters(cornerPixels);
             var newBody = _world.CreateBody(cornerMeters, 0f, BodyType.Static);
 
-            // Create joint from previous anchor (or primary) to new wrap point
+            // Create joint from previous anchor (or primary) to new wrap point.
+            // joint1 connects newBody → existing.Body (series chain), NOT to playerBody.
             float seg1Meters = PhysicsManager.ToMeters(seg1LengthPixels);
-            var joint1 = new RopeJoint(newBody, playerBody, Vector2.Zero, Vector2.Zero, false);
+            var joint1 = new RopeJoint(newBody, existing.Body, Vector2.Zero, Vector2.Zero, false);
             joint1.MaxLength = Math.Max(0.1f, seg1Meters);
             _world.Add(joint1);
 
-            // Create joint from new wrap point to the existing wrap point
+            // The existing wrap point's joint now connects from existing.Body to whatever
+            // it was already connected to (the next wrap point or the player).
+            // We keep the existing joint reference unchanged — it already connects
+            // existing.Body → nextAnchor (or playerBody).
+            // We only need to update its MaxLength to reflect the new segment length.
             float seg2Meters = PhysicsManager.ToMeters(seg2LengthPixels);
-            var joint2 = new RopeJoint(existing.Body, playerBody, Vector2.Zero, Vector2.Zero, false);
-            joint2.MaxLength = Math.Max(0.1f, seg2Meters);
-            _world.Add(joint2);
-
-            // Update the existing wrap point's joint to the new one
-            existing.Joint = joint2;
+            existing.Joint.MaxLength = Math.Max(0.1f, seg2Meters);
 
             // Insert the new wrap point
             _wrapPoints.Insert(index, new WrapPoint
@@ -406,7 +410,17 @@ namespace Bloop.Gameplay
                 int ty = (int)(samplePos.Y / TileSize);
 
                 if (TileProperties.IsSolid(_tileMap.GetTile(tx, ty)))
-                    return samplePos;
+                {
+                    // Skip fully-interior tiles — all 4 cardinal neighbors are solid,
+                    // so there is no accessible corner for the rope to wrap around.
+                    bool allNeighborsSolid =
+                        TileProperties.IsSolid(_tileMap.GetTile(tx - 1, ty)) &&
+                        TileProperties.IsSolid(_tileMap.GetTile(tx + 1, ty)) &&
+                        TileProperties.IsSolid(_tileMap.GetTile(tx,     ty - 1)) &&
+                        TileProperties.IsSolid(_tileMap.GetTile(tx,     ty + 1));
+                    if (!allNeighborsSolid)
+                        return samplePos;
+                }
             }
 
             return null;
@@ -461,54 +475,99 @@ namespace Bloop.Gameplay
             Vector2 bl = new Vector2(tx       * TileSize, (ty + 1) * TileSize); // bottom-left
             Vector2 br = new Vector2((tx + 1) * TileSize, (ty + 1) * TileSize); // bottom-right
 
-            // Select the corner at the intersection of the entry and exit sides.
-            // For example: entering from left, exiting to bottom → bottom-left corner.
-            Vector2 selectedCorner = intersectionPixels;
+            // Collect candidate corners from the entry/exit side detection
+            var candidates = new List<Vector2>();
 
-            if (entryFromLeft && exitToTop)       selectedCorner = tl;
-            else if (entryFromLeft && exitToBottom) selectedCorner = bl;
-            else if (entryFromRight && exitToTop)    selectedCorner = tr;
-            else if (entryFromRight && exitToBottom) selectedCorner = br;
-            else if (entryFromTop && exitToLeft)     selectedCorner = tl;
-            else if (entryFromTop && exitToRight)    selectedCorner = tr;
-            else if (entryFromBottom && exitToLeft)  selectedCorner = bl;
-            else if (entryFromBottom && exitToRight) selectedCorner = br;
+            if (entryFromLeft && exitToTop)       candidates.Add(tl);
+            else if (entryFromLeft && exitToBottom) candidates.Add(bl);
+            else if (entryFromRight && exitToTop)    candidates.Add(tr);
+            else if (entryFromRight && exitToBottom) candidates.Add(br);
+            else if (entryFromTop && exitToLeft)     candidates.Add(tl);
+            else if (entryFromTop && exitToRight)    candidates.Add(tr);
+            else if (entryFromBottom && exitToLeft)  candidates.Add(bl);
+            else if (entryFromBottom && exitToRight) candidates.Add(br);
             else
             {
-                // Fallback: pick the empty corner closest to the intersection point
-                var corners = new[] { tl, tr, bl, br };
-                float bestDist = float.MaxValue;
-                foreach (var corner in corners)
+                // Fallback: all four corners are candidates
+                candidates.Add(tl);
+                candidates.Add(tr);
+                candidates.Add(bl);
+                candidates.Add(br);
+            }
+
+            // Filter candidates: a valid corner must have at least one empty neighbor
+            // AND both resulting segments (anchor→corner and corner→player) must be
+            // clear of terrain. This prevents selecting a corner that would still clip.
+            Vector2 selectedCorner = intersectionPixels;
+            float bestDist = float.MaxValue;
+
+            foreach (var corner in candidates)
+            {
+                int ctx = (int)(corner.X / TileSize);
+                int cty = (int)(corner.Y / TileSize);
+
+                // Corner is valid if at least one adjacent tile is empty
+                bool hasEmptyNeighbor = false;
+                foreach (var (dx, dy) in new[] { (-1,0),(1,0),(0,-1),(0,1) })
                 {
-                    int ctx = (int)(corner.X / TileSize);
-                    int cty = (int)(corner.Y / TileSize);
-                    // Corner is valid if at least one adjacent tile is empty
-                    bool hasEmptyNeighbor = false;
-                    foreach (var (dx, dy) in new[] { (-1,0),(1,0),(0,-1),(0,1) })
+                    if (_tileMap != null &&
+                        !TileProperties.IsSolid(_tileMap.GetTile(ctx + dx, cty + dy)))
                     {
-                        if (_tileMap != null &&
-                            !TileProperties.IsSolid(_tileMap.GetTile(ctx + dx, cty + dy)))
-                        {
-                            hasEmptyNeighbor = true;
-                            break;
-                        }
+                        hasEmptyNeighbor = true;
+                        break;
                     }
-                    if (!hasEmptyNeighbor) continue;
-                    float dist = Vector2.Distance(corner, intersectionPixels);
-                    if (dist < bestDist)
-                    {
-                        bestDist = dist;
-                        selectedCorner = corner;
-                    }
+                }
+                if (!hasEmptyNeighbor) continue;
+
+                // Validate that both segments around this corner are clear of terrain.
+                // Use a small inset (2px) from the corner to avoid self-intersection
+                // with the tile we're wrapping around.
+                Vector2 inset = corner - anchorPixels;
+                float insetLen = inset.Length();
+                Vector2 cornerFrom = corner;
+                if (insetLen > 2f)
+                {
+                    inset /= insetLen;
+                    cornerFrom = corner + inset * 2f;
+                }
+
+                Vector2 toPlayer = playerPixels - corner;
+                float toPlayerLen = toPlayer.Length();
+                Vector2 cornerTo = corner;
+                if (toPlayerLen > 2f)
+                {
+                    toPlayer /= toPlayerLen;
+                    cornerTo = corner + toPlayer * 2f;
+                }
+
+                bool seg1Clear = !LineIntersectsTerrain(anchorPixels, cornerFrom);
+                bool seg2Clear = !LineIntersectsTerrain(cornerTo, playerPixels);
+
+                if (!seg1Clear || !seg2Clear) continue;
+
+                float dist = Vector2.Distance(corner, intersectionPixels);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    selectedCorner = corner;
                 }
             }
 
-            // Offset slightly away from the tile to avoid re-intersection
-            Vector2 toPlayer = playerPixels - selectedCorner;
-            if (toPlayer.LengthSquared() > 0.01f)
+            // If no candidate passed validation (shouldn't happen in normal cases),
+            // fall back to the raw side-detection result or the intersection point.
+            if (bestDist == float.MaxValue)
             {
-                toPlayer.Normalize();
-                selectedCorner += toPlayer * 2f; // 2px offset
+                // Use the first candidate as a last resort
+                if (candidates.Count > 0)
+                    selectedCorner = candidates[0];
+            }
+
+            // Offset slightly away from the tile to avoid re-intersection
+            Vector2 offsetDir = playerPixels - selectedCorner;
+            if (offsetDir.LengthSquared() > 0.01f)
+            {
+                offsetDir.Normalize();
+                selectedCorner += offsetDir * 4f; // 4px offset (increased from 2px)
             }
 
             return selectedCorner;

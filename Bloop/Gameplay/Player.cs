@@ -323,7 +323,7 @@ namespace Bloop.Gameplay
 
                 case PlayerState.Swinging:
                     Body.IgnoreGravity = false;
-                    Body.LinearDamping = 0.3f; // increased from 0.1f to reduce oscillation
+                    Body.LinearDamping = 0.1f;
                     break;
 
                 case PlayerState.Controlling:

@@ -278,6 +278,10 @@ namespace Bloop.Gameplay
                     _player.Body.LinearVelocity = PhysicsManager.ToMeters(new Vector2(0f, -WallClimbSpeed));
                     // Mantle over the top when head meets a solid floor tile above
                     CheckLedgeGrabFromCling();
+                    // Nudge around protruding tile corners while climbing upward
+                    ApplyClimbingCornerCorrection();
+                    // Also nudge around ceiling-edge corners (asymmetric shoulder overlap)
+                    ApplyCornerCorrection();
                     return;
                 }
                 // ── Bug #5 fix: climb down while wall-clinging ─────────────────
@@ -432,7 +436,13 @@ namespace Bloop.Gameplay
 
                 // Try to mantle over the top edge when climbing upward
                 if (vert < 0f)
+                {
                     CheckLedgeGrabFromCling();
+                    // Nudge around protruding wall-side corners while climbing upward
+                    ApplyClimbingCornerCorrection();
+                    // Also nudge around ceiling-edge corners (handles top-of-vine case)
+                    ApplyCornerCorrection();
+                }
 
                 return; // skip normal movement while climbing
             }
@@ -1043,6 +1053,77 @@ namespace Bloop.Gameplay
                 float overlap   = rightX - blockLeft;
                 if (overlap > 0f && overlap <= MaxNudge)
                     _player.Body.Position -= PhysicsManager.ToMeters(new Vector2(overlap, 0f));
+            }
+        }
+
+        /// <summary>
+        /// Corner correction for climbing: when the player climbs upward alongside a wall
+        /// and their top edge encounters a protruding tile corner, nudge them horizontally
+        /// around the corner instead of getting stuck.
+        ///
+        /// Checks the tile diagonally above the player's head on the wall side. If that
+        /// tile is solid but the tile directly above the player is empty, it means there's
+        /// a protruding corner — nudge the player away from the wall to slide around it.
+        /// </summary>
+        private void ApplyClimbingCornerCorrection()
+        {
+            if (_tileMap == null) return;
+
+            int ts = TileMap.TileSize;
+            Vector2 pos = _player.PixelPosition;
+            float halfW = Player.WidthPx / 2f;
+            float halfH = _player.CurrentHeightPx / 2f;
+
+            // Determine which side the wall is on
+            bool wallLeft = _player.IsTouchingWallLeft;
+            bool wallRight = _player.IsTouchingWallRight;
+            if (!wallLeft && !wallRight) return;
+
+            // Sample the tile at the player's head level on the wall side
+            float headY = pos.Y - halfH;
+            int headTy = (int)(headY / ts);
+            if (headTy < 0 || headTy >= _tileMap.Height) return;
+
+            // The wall-adjacent column
+            float wallEdgeX = wallLeft ? pos.X - halfW : pos.X + halfW;
+            int wallTx = wallLeft
+                ? (int)((wallEdgeX - 1f) / ts)
+                : (int)((wallEdgeX + 1f) / ts);
+            if (wallTx < 0 || wallTx >= _tileMap.Width) return;
+
+            // The tile diagonally above the player's head on the wall side
+            int aboveTy = headTy - 1;
+            if (aboveTy < 0 || aboveTy >= _tileMap.Height) return;
+
+            // The tile directly above the player's head (center column)
+            int centerTx = (int)(pos.X / ts);
+            if (centerTx < 0 || centerTx >= _tileMap.Width) return;
+
+            bool wallCornerSolid = TileProperties.IsSolid(_tileMap.GetTile(wallTx, aboveTy));
+            bool aboveClear = !TileProperties.IsSolid(_tileMap.GetTile(centerTx, aboveTy));
+
+            // If the diagonal corner is solid but the space above the player is clear,
+            // there's a protruding corner — nudge the player away from the wall.
+            if (wallCornerSolid && aboveClear)
+            {
+                const float MaxNudge = 6f;
+
+                if (wallLeft)
+                {
+                    // Protruding corner on the left — nudge right
+                    float clearEdge = (wallTx + 1) * ts;
+                    float overlap = clearEdge - (pos.X - halfW);
+                    if (overlap > 0f && overlap <= MaxNudge)
+                        _player.Body.Position += PhysicsManager.ToMeters(new Vector2(overlap, 0f));
+                }
+                else
+                {
+                    // Protruding corner on the right — nudge left
+                    float blockLeft = wallTx * ts;
+                    float overlap = (pos.X + halfW) - blockLeft;
+                    if (overlap > 0f && overlap <= MaxNudge)
+                        _player.Body.Position -= PhysicsManager.ToMeters(new Vector2(overlap, 0f));
+                }
             }
         }
 

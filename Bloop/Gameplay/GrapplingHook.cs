@@ -271,6 +271,28 @@ namespace Bloop.Gameplay
                 // the swing starts immediately. High-momentum swings are untouched.
                 ApplyOptionalAnchorYank();
 
+                // If the rope is meaningfully oblique (anchor is to the side, not
+                // directly above), gravity has almost no tangential component and the
+                // pendulum won't start on its own. Apply a tiny downward tangential
+                // kick so the player drifts toward the bottom of the swing arc.
+                {
+                    Vector2 toAnchor = _pendingAnchorPos - _ownerPlayer.Body.Position;
+                    if (toAnchor.LengthSquared() > 0.0001f)
+                    {
+                        Vector2 ropeDir = Vector2.Normalize(toAnchor);
+                        // |ropeDir.X| ≈ sin(angle from vertical) — large when nearly horizontal
+                        float obliqueness = MathF.Abs(ropeDir.X);
+                        if (obliqueness > 0.25f) // rope is >15° from vertical
+                        {
+                            // Tangent perpendicular to rope, oriented toward the lower side
+                            Vector2 tangent = new Vector2(-ropeDir.Y, ropeDir.X);
+                            if (tangent.X < 0f) tangent = -tangent;
+                            float kickMagnitude = obliqueness * 0.06f;
+                            _ownerPlayer.Body.ApplyLinearImpulse(tangent * kickMagnitude);
+                        }
+                    }
+                }
+
                 // Destroy the hook projectile body — anchor body takes its place
                 DestroyHookBody();
 
@@ -280,10 +302,6 @@ namespace Bloop.Gameplay
                 // within the rope radius. Swinging is only forced when airborne.
                 if (!_ownerPlayer.IsGrounded)
                     _ownerPlayer.SetState(PlayerState.Swinging);
-
-                // NOTE: No yank impulse applied here.
-                // The player stays where they are when the hook anchors.
-                // Gravity and player input drive the swing naturally.
 
                 // ── Swing arc tracking — reset on each new anchor ──────────────
                 Vector2 toPlayer = _ownerPlayer.Body.Position - _pendingAnchorPos;
