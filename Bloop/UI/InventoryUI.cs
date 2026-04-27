@@ -53,6 +53,14 @@ namespace Bloop.UI
         public bool IsVisible { get; set; }
         private int _selectedIndex;
 
+        // ── Slide-in animation state (Phase 4.5) ───────────────────────────────
+        /// <summary>0 = fully off-screen right, 1 = fully docked.</summary>
+        private float _slideProgress = 0f;
+        private const float SlideRate = 14f; // continuous decay rate
+        private readonly System.Diagnostics.Stopwatch _slideClock = new();
+        public bool IsAnimating => _slideProgress > 0.001f && _slideProgress < 0.999f;
+        public bool IsRendered  => IsVisible || _slideProgress > 0.001f;
+
         // ── Input tracking ─────────────────────────────────────────────────────
         private bool _prevTabDown;
         private bool _prevUpDown;
@@ -77,6 +85,14 @@ namespace Bloop.UI
             if (tabDown && !_prevTabDown)
                 Toggle();
             _prevTabDown = tabDown;
+
+            // Phase 4.5: tween slide progress toward target each frame so the
+            // panel eases in/out instead of popping.
+            float dt;
+            if (!_slideClock.IsRunning) { _slideClock.Start(); dt = 1f / 60f; }
+            else { dt = (float)System.Math.Min(0.05, _slideClock.Elapsed.TotalSeconds); _slideClock.Restart(); }
+            float target = IsVisible ? 1f : 0f;
+            _slideProgress = Bloop.Core.Smoothing.ExpDecay(_slideProgress, target, SlideRate, dt);
 
             if (!IsVisible) return;
 
@@ -119,7 +135,8 @@ namespace Bloop.UI
         public void Draw(SpriteBatch spriteBatch, AssetManager assets,
             Inventory inventory, DebuffSystem debuffs, int screenWidth, int screenHeight)
         {
-            if (!IsVisible) return;
+            // Phase 4.5: keep drawing while sliding out, even after IsVisible=false.
+            if (!IsRendered) return;
 
             // ── Calculate panel height dynamically ────────────────────────────
             int itemCount    = inventory.ItemCount;
@@ -137,7 +154,11 @@ namespace Bloop.UI
                 PanelPadding;           // bottom padding
 
             // ── Panel position: right side of screen ──────────────────────────
-            int panelX = screenWidth - PanelWidth - 16;
+            // Phase 4.5: slide in from the right with ease-out curve.
+            float ease = 1f - (1f - _slideProgress) * (1f - _slideProgress); // quad ease-out
+            int panelX = (int)MathHelper.Lerp(screenWidth + 4f,
+                                              screenWidth - PanelWidth - 16f,
+                                              ease);
             int panelY = 16;
 
             // ── Background ────────────────────────────────────────────────────
@@ -174,7 +195,17 @@ namespace Bloop.UI
 
                     Color rowColor = selected ? SelectedColor : ItemColor;
 
-                    // Selection indicator
+                    // Phase 4.5: full-row background highlight on selection
+                    // (more legible than a single-character prefix).
+                    if (selected)
+                    {
+                        var rowRect = new Rectangle(
+                            panelX + 4, cy - 1,
+                            PanelWidth - 8, ItemRowHeight);
+                        assets.DrawRect(spriteBatch, rowRect,
+                            new Color(SelectedColor.R, SelectedColor.G, SelectedColor.B, (byte)40));
+                    }
+
                     string prefix = selected ? "► " : "  ";
                     string line   = $"{prefix}{item.DisplayName}";
                     string weight = $"{item.Weight:0}kg";

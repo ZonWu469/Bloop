@@ -34,7 +34,16 @@ namespace Bloop.Rendering
     /// </summary>
     public static class PlayerRenderer
     {
-        // ── Entry point ────────────────────────────────────────────────────────
+        // ── Smoothed render state (Phase 6.1) ─────────────────────────────────
+        // Static is acceptable here: there is exactly one Player rendered.
+        // These prevent sprite scale and rope rotation from popping on state
+        // transitions or sudden anchor swings.
+        private static float _smoothedScale  = 1f;
+        private static float _smoothedRot    = 0f;
+        private static bool  _smoothedValid  = false;
+        private static System.Diagnostics.Stopwatch _renderClock = new();
+        private const float ScaleRate = 12f;   // ~80ms settle
+        private const float RotRate   = 16f;   // ~60ms settle
 
         public static void Draw(SpriteBatch sb, AssetManager assets, Player player)
         {
@@ -120,6 +129,26 @@ namespace Bloop.Rendering
                 }
             }
 
+            // ── Phase 6.1: smooth scale and rotation across frames ────────────
+            float dt;
+            if (!_renderClock.IsRunning) { _renderClock.Start(); dt = 1f / 60f; _smoothedValid = false; }
+            else { dt = (float)System.Math.Min(0.05, _renderClock.Elapsed.TotalSeconds); _renderClock.Restart(); }
+
+            if (!_smoothedValid)
+            {
+                _smoothedScale = scale;
+                _smoothedRot   = rotation;
+                _smoothedValid = true;
+            }
+            else
+            {
+                _smoothedScale = Bloop.Core.Smoothing.ExpDecay(_smoothedScale, scale, ScaleRate, dt);
+                // Wrap-aware rotation lerp: shortest-arc.
+                float rotDelta = WrapAngle(rotation - _smoothedRot);
+                _smoothedRot   = _smoothedRot + rotDelta *
+                                 (1f - MathF.Exp(-RotRate * dt));
+            }
+
             // ── Draw ───────────────────────────────────────────────────────────
             var srcRect = sheet.GetSourceRect(frameIndex);
             var origin  = new Vector2(sheet.FrameWidth / 2f, sheet.FrameHeight / 2f);
@@ -129,11 +158,19 @@ namespace Bloop.Rendering
                 player.PixelPosition,
                 srcRect,
                 Color.White,
-                rotation,
+                _smoothedRot,
                 origin,
-                scale,
+                _smoothedScale,
                 effects,
                 0f);
+        }
+
+        /// <summary>Wrap angle to [-π, π] for shortest-arc rotation lerp.</summary>
+        private static float WrapAngle(float a)
+        {
+            while (a > MathF.PI)  a -= MathF.PI * 2f;
+            while (a < -MathF.PI) a += MathF.PI * 2f;
+            return a;
         }
 
         // ── Helpers ────────────────────────────────────────────────────────────

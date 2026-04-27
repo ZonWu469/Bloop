@@ -57,7 +57,6 @@ namespace Bloop.Gameplay
         private bool           _isAnchored;
         private bool           _pendingAnchor;
         private Vector2        _pendingAnchorPos;    // in meter space
-        private Vector2        _pendingPlayerPosMeters; // player position captured at collision time
 
         // ── Anchor surface type (for color-coding) ─────────────────────────────
         private nkast.Aether.Physics2D.Dynamics.Category _pendingAnchorSurface;
@@ -65,6 +64,19 @@ namespace Bloop.Gameplay
         // ── Swing arc tracking (for arc-scaled release) ────────────────────────
         private float _swingInitialAngle  = 0f;
         private float _swingMaxArcAngle   = 0f;
+        // Phase 2.3: cumulative arc travelled across pendulum reversals.
+        // Lets back-and-forth swings build into the release bonus, instead of
+        // only counting the largest single-direction swing from initial angle.
+        private float _swingPrevAngle       = 0f;
+        private bool  _swingPrevAngleValid  = false;
+        private float _swingCumulativeArc   = 0f;
+
+        // ── Smooth wrap-length transitions (Phase 2.4) ─────────────────────────
+        // The wrap system can change effective rope length frame-to-frame as the
+        // rope wraps/unwraps around tile corners. Snapping the joint MaxLength to
+        // the new value yanks the player; instead we lerp smoothly.
+        private float _smoothedJointMaxMeters = 0f;
+        private const float WrapLengthLerpRate = 18f; // continuous decay rate
 
         public bool IsFlying   => _isFlying;
         public bool IsAnchored => _isAnchored;
@@ -180,9 +192,11 @@ namespace Bloop.Gameplay
                     Vector2 radialVelocity      = radial * radialComponent;
                     Vector2 tangentialVelocity  = vel - radialVelocity;
 
-                    // Arc-scaled tangential boost: 1.0× at 0 rad → 1.6× at ≥ π/2 rad
-                    // Rewards players who let the swing develop fully.
-                    float arcFraction = MathHelper.Clamp(_swingMaxArcAngle / (MathF.PI / 2f), 0f, 1f);
+                    // Arc-scaled tangential boost: composes max-from-initial swing
+                    // AND cumulative back-and-forth arc travel (Phase 2.3). Caps at 1.6×.
+                    float maxArcFrac = _swingMaxArcAngle / (MathF.PI / 2f);
+                    float cumulFrac  = _swingCumulativeArc / MathF.PI; // 1 full π of pendulum travel = max
+                    float arcFraction = MathHelper.Clamp(MathF.Max(maxArcFrac, cumulFrac), 0f, 1f);
                     float tangBoost   = MathHelper.Lerp(1.0f, 1.6f, arcFraction);
                     _ownerPlayer.Body.LinearVelocity = radialVelocity + tangentialVelocity * tangBoost;
                 }
@@ -225,38 +239,23 @@ namespace Bloop.Gameplay
                 _anchorBody     = _world.CreateBody(_pendingAnchorPos, 0f, BodyType.Static);
                 _anchorPixelPos = PhysicsManager.ToPixels(_pendingAnchorPos);
 
-                // Calculate rope length using the player position captured at collision time,
-                // not now — the player continues to fall during the remaining physics sub-steps
-                // between OnHookCollision and this Update(), which would produce a too-long rope.
-                float ropeLength = Vector2.Distance(_pendingAnchorPos, _pendingPlayerPosMeters);
-                ropeLength = MathHelper.Clamp(ropeLength,
+                // ── Phase 2.1: jerk-free anchor ────────────────────────────────
+                // Compute rope length from the CURRENT player position with a tiny
+                // slack epsilon. Any natural radial overshoot from the next physics
+                // step is absorbed by the slack; the rope finds tautness on the next
+                // pendulum swing rather than yanking the player on creation.
+                const float SlackMeters = 0.06f; // ~4 px of slack
+                float currentDistMeters = Vector2.Distance(
+                    _pendingAnchorPos, _ownerPlayer.Body.Position);
+                float ropeLength = MathHelper.Clamp(
+                    currentDistMeters + SlackMeters,
                     PhysicsManager.ToMeters(MinRopeLength),
                     PhysicsManager.ToMeters(MaxRange));
 
                 _currentRopeLengthPixels = PhysicsManager.ToPixels(ropeLength);
-
-                // ── Bug #2 fix: correct player position if they exceeded rope length ──
-                // During the remaining sub-steps between OnHookCollision and this Update(),
-                // the player may have fallen further, exceeding the intended rope length.
-                // Teleport the player back to the correct distance from the anchor.
-                float currentDist = Vector2.Distance(_pendingAnchorPos, _ownerPlayer.Body.Position);
-                float maxDistMeters = PhysicsManager.ToMeters(_currentRopeLengthPixels);
-                if (currentDist > maxDistMeters + 0.01f)
-                {
-                    Vector2 toAnchor = _pendingAnchorPos - _ownerPlayer.Body.Position;
-                    toAnchor.Normalize();
-                    // Place player at exactly the rope length distance from anchor
-                    _ownerPlayer.Body.Position = _pendingAnchorPos - toAnchor * maxDistMeters;
-                    // Zero velocity toward/away from anchor to prevent immediate re-stretch
-                    Vector2 vel = _ownerPlayer.Body.LinearVelocity;
-                    float radialComponent = Vector2.Dot(vel, -toAnchor);
-                    if (radialComponent > 0f)
-                        _ownerPlayer.Body.LinearVelocity = vel + toAnchor * radialComponent;
-                }
+                _smoothedJointMaxMeters  = ropeLength;
 
                 // RopeJoint constrains only the MAXIMUM distance (one-sided, like a real rope).
-                // A DistanceJoint would force the exact length, trapping the player against
-                // the ground and fighting any reel-in attempt.
                 _joint = new RopeJoint(
                     _anchorBody,
                     _ownerPlayer.Body,
@@ -265,6 +264,12 @@ namespace Bloop.Gameplay
                     false);
                 _joint.MaxLength = ropeLength;
                 _world.Add(_joint);
+
+                // Phase 2.2: yank-feel impulse for low-velocity anchors.
+                // If the player is barely moving relative to the rope tangent,
+                // give them a small tangential nudge based on input direction so
+                // the swing starts immediately. High-momentum swings are untouched.
+                ApplyOptionalAnchorYank();
 
                 // Destroy the hook projectile body — anchor body takes its place
                 DestroyHookBody();
@@ -282,8 +287,11 @@ namespace Bloop.Gameplay
 
                 // ── Swing arc tracking — reset on each new anchor ──────────────
                 Vector2 toPlayer = _ownerPlayer.Body.Position - _pendingAnchorPos;
-                _swingInitialAngle = MathF.Atan2(toPlayer.Y, toPlayer.X);
-                _swingMaxArcAngle  = 0f;
+                _swingInitialAngle    = MathF.Atan2(toPlayer.Y, toPlayer.X);
+                _swingMaxArcAngle     = 0f;
+                _swingCumulativeArc   = 0f;
+                _swingPrevAngle       = _swingInitialAngle;
+                _swingPrevAngleValid  = true;
 
                 // ── Impact feedback ────────────────────────────────────────────
                 Color anchorColor = _pendingAnchorSurface == CollisionCategories.CrystalBridge
@@ -297,7 +305,9 @@ namespace Bloop.Gameplay
                 _pendingAnchor = false;
             }
 
-            // ── Arc tracking: accumulate max angular displacement while swinging ─
+            // ── Arc tracking: accumulate displacement AND cumulative travel ──
+            // Phase 2.3: max-from-initial captures only the largest single swing;
+            // cumulative arc rewards back-and-forth pendulum building too.
             if (_isAnchored && _ownerPlayer != null &&
                 _ownerPlayer.State == PlayerState.Swinging)
             {
@@ -308,7 +318,21 @@ namespace Bloop.Gameplay
                     float diff  = MathF.Abs(WrapAngle(angle - _swingInitialAngle));
                     if (diff > _swingMaxArcAngle)
                         _swingMaxArcAngle = diff;
+
+                    if (_swingPrevAngleValid)
+                    {
+                        float step = MathF.Abs(WrapAngle(angle - _swingPrevAngle));
+                        // Ignore rotational noise; cap per-frame step to avoid spikes.
+                        if (step < MathF.PI * 0.5f)
+                            _swingCumulativeArc += step;
+                    }
+                    _swingPrevAngle      = angle;
+                    _swingPrevAngleValid = true;
                 }
+            }
+            else
+            {
+                _swingPrevAngleValid = false;
             }
 
             // Update wrap system while anchored
@@ -321,9 +345,16 @@ namespace Bloop.Gameplay
                     _ownerPlayer.Body,
                     ref remainingLength);
 
-                // Update the primary joint's max length to the remaining (unwrapped) length
-                _joint.MaxLength = System.Math.Max(0.1f,
+                // Phase 2.4: smooth the joint MaxLength across wrap/unwrap events.
+                // Snapping it on a single frame (when a wrap point appears) yanks
+                // the player; lerping over a couple of physics steps lets the
+                // constraint settle without a visible jerk.
+                float targetMeters = System.Math.Max(0.1f,
                     PhysicsManager.ToMeters(remainingLength));
+                float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+                _smoothedJointMaxMeters = Smoothing.ExpDecay(
+                    _smoothedJointMaxMeters, targetMeters, WrapLengthLerpRate, dt);
+                _joint.MaxLength = _smoothedJointMaxMeters;
 
                 // ── Grounded grapple fix: keep attached while grounded ────────────
                 // The player can walk freely within the rope radius while grounded.
@@ -496,7 +527,6 @@ namespace Bloop.Gameplay
             {
                 _pendingAnchorPos = contactPoints[0]; // meter space — first contact point
             }
-            _pendingPlayerPosMeters = _ownerPlayer.Body.Position; // capture now, before player falls further
             _pendingAnchorSurface   = other.CollisionCategories;
 
             _pendingAnchor = true;
@@ -510,6 +540,37 @@ namespace Bloop.Gameplay
             while (angle > MathF.PI)  angle -= MathF.PI * 2f;
             while (angle < -MathF.PI) angle += MathF.PI * 2f;
             return angle;
+        }
+
+        /// <summary>
+        /// Phase 2.2: optional gentle tangential impulse on anchor.
+        /// If the player is barely moving along the swing tangent (e.g. anchored
+        /// at near-zero velocity from a standing position), nudge them in the
+        /// direction of horizontal input so the swing starts immediately.
+        /// High-momentum anchors are untouched.
+        /// </summary>
+        private void ApplyOptionalAnchorYank()
+        {
+            if (_ownerPlayer == null) return;
+
+            Vector2 toAnchor = _pendingAnchorPos - _ownerPlayer.Body.Position;
+            if (toAnchor.LengthSquared() < 0.0001f) return;
+            toAnchor.Normalize();
+
+            // Tangent perpendicular to rope, pointing rightward by default.
+            Vector2 tangent = new Vector2(-toAnchor.Y, toAnchor.X);
+            if (tangent.X < 0f) tangent = -tangent;
+
+            float tangentialSpeed = MathF.Abs(Vector2.Dot(_ownerPlayer.Body.LinearVelocity, tangent));
+            // Threshold in m/s — below ~0.5 m/s tangential, give a nudge.
+            const float MinTangentialSpeedMs = 0.5f;
+            if (tangentialSpeed >= MinTangentialSpeedMs) return;
+
+            // Use facing direction as the nudge sign (keyboard player has no
+            // analog stick; using FacingDirection feels predictable).
+            float sign = _ownerPlayer.FacingDirection >= 0 ? 1f : -1f;
+            Vector2 nudge = tangent * sign * 1.5f; // m/s
+            _ownerPlayer.Body.LinearVelocity += nudge;
         }
 
         /// <summary>Destroy only the hook projectile body (not the anchor).</summary>

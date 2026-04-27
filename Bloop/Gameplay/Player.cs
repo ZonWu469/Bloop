@@ -142,12 +142,12 @@ namespace Bloop.Gameplay
         // ── Mantle state (2.2) ─────────────────────────────────────────────────
         private float   _mantleTimer       = 0f;
         private Vector2 _mantleTargetPixel = Vector2.Zero;
-        private const float MantleDuration = 0.35f; // seconds for pull-up animation
+        private const float MantleDuration = MovementTuning.MantleDuration;
 
         // ── Launch state (2.4) — post-grapple-release momentum boost ──────────
         private float _launchTimer = 0f;
-        private const float LaunchDuration     = 0.30f; // seconds of reduced gravity
-        private const float LaunchGravityScale = 0.30f; // fraction of normal gravity
+        private const float LaunchDuration     = MovementTuning.LaunchDuration;
+        private const float LaunchGravityScale = MovementTuning.LaunchGravityScale;
         /// <summary>True while the player is in the post-release launch window.</summary>
         public bool LaunchBoostActive => State == PlayerState.Launching;
         /// <summary>Horizontal speed (px/s) at launch start — used for speed-line intensity.</summary>
@@ -162,13 +162,15 @@ namespace Bloop.Gameplay
         public Action<float, float>? OnShakeRequested { get; set; }
 
         // ── Fall damage tracking ───────────────────────────────────────────────
-        // Uses peak downward velocity on landing (m/s) rather than distance,
-        // so normal jumps — which rise and fall through the same apex — never
-        // exceed the safe threshold, but long drops always do.
+        // Tracks peak downward velocity (m/s) on landing. Phase 1.6: the peak is
+        // only cleared on grounded landing or explicit upward impulse — not when
+        // the player briefly enters Climbing/Rappelling/Swinging/WallClinging
+        // mid-fall, which previously let players "cheese" past damage thresholds
+        // by tapping a rope or grabbing a wall during a long drop.
         private float _peakFallVelMs = 0f;
-        private const float SafeImpactMs   = 11f;  // just above normal jump landing (~10.67 m/s); damage starts at ~3m drops
-        private const float DamagePerMs    = 10f;  // ~45 HP at 6m, ~90 HP at 10m, lethal at ~12m
-        private const float LethalImpactMs = 20f;  // ~10m drop; adds stun on top of near-lethal damage
+        private const float SafeImpactMs   = MovementTuning.SafeImpactMs;
+        private const float DamagePerMs    = MovementTuning.DamagePerMs;
+        private const float LethalImpactMs = MovementTuning.LethalImpactMs;
 
         // ── Constructor ────────────────────────────────────────────────────────
 
@@ -242,13 +244,19 @@ namespace Bloop.Gameplay
             else if (wasCrouching && !willCrouch)
                 RebuildHitbox(StandingHeightPx);
 
-            // Non-gravity states break impact tracking (rope/vine or wall takes the load)
-            if (newState == PlayerState.Climbing ||
-                newState == PlayerState.Rappelling ||
-                newState == PlayerState.Swinging ||
-                newState == PlayerState.WallClinging ||
-                newState == PlayerState.Stunned ||
-                newState == PlayerState.Dead)
+            // Phase 1.6: only clear peak fall velocity on states that are
+            // genuinely a "safe stop" (Stunned/Dead end the fall outright; the
+            // grounded auto-transition in Update() resets it after damage is
+            // resolved). Climbing/Rappelling/Swinging/WallClinging used to
+            // reset the peak — that allowed a brief rope-tap mid-fall to skip
+            // damage entirely. Now those states preserve the peak so when the
+            // player drops back off, damage is still owed.
+            if (newState == PlayerState.Stunned || newState == PlayerState.Dead)
+            {
+                _peakFallVelMs = 0f;
+            }
+            // An upward impulse (jump or wall-jump) genuinely interrupts the fall.
+            else if (newState == PlayerState.Jumping || newState == PlayerState.WallJumping)
             {
                 _peakFallVelMs = 0f;
             }
@@ -290,8 +298,10 @@ namespace Bloop.Gameplay
                     break;
 
                 case PlayerState.Launching:
-                    // Reduced gravity for the brief launch window (2.4)
-                    Body.IgnoreGravity = false;
+                    // Phase 1.7: disable world gravity entirely and apply our own
+                    // reduced-gravity acceleration in Update(). Eliminates the
+                    // fragile "must match PhysicsManager.Gravity" duplication.
+                    Body.IgnoreGravity = true;
                     Body.LinearDamping = 0f;
                     break;
 
@@ -369,12 +379,11 @@ namespace Bloop.Gameplay
             {
                 _launchTimer -= dt;
 
-                // Apply reduced gravity by counteracting the world gravity partially.
-                // World gravity = 20 m/s² (set in PhysicsManager); we apply an upward force to
-                // reduce effective gravity to LaunchGravityScale fraction.
-                float worldGravity = 20f; // m/s² — must match PhysicsManager gravity
-                float counterForce = worldGravity * Body.Mass * (1f - LaunchGravityScale);
-                Body.ApplyForce(new Vector2(0f, -counterForce));
+                // Phase 1.7: apply our own reduced gravity (single source of truth).
+                // IgnoreGravity is set in ApplyStateBodyConfig; we add a manual
+                // downward force scaled by LaunchGravityScale.
+                Vector2 reducedGravity = PhysicsManager.Gravity * LaunchGravityScale;
+                Body.ApplyForce(reducedGravity * Body.Mass);
 
                 if (_launchTimer <= 0f || IsGrounded)
                     SetState(PlayerState.Falling);

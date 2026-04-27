@@ -21,8 +21,21 @@ namespace Bloop.Core
         /// <summary>Camera zoom factor (1.0 = no zoom).</summary>
         public float Zoom { get; set; } = 1f;
 
-        /// <summary>Smoothing factor for follow (0 = instant, 1 = never moves).</summary>
-        public float Smoothing { get; set; } = 0.12f;
+        /// <summary>
+        /// Legacy per-60Hz smoothing factor for follow (0 = instant, 1 = never moves).
+        /// Setting this also updates the internal frame-rate-independent rate so
+        /// behavior matches at 60 Hz while staying consistent at any refresh rate.
+        /// </summary>
+        public float Smoothing
+        {
+            get => _legacySmoothing;
+            set
+            {
+                _legacySmoothing = value;
+                _followRate = Bloop.Core.Smoothing.RateFromPerTick60Hz(value);
+            }
+        }
+        private float _legacySmoothing = 0.12f;
 
         // World bounds for clamping (set by the level)
         private float _minX, _maxX, _minY, _maxY;
@@ -40,6 +53,14 @@ namespace Bloop.Core
         private Vector2 _lookaheadBias  = Vector2.Zero;
         private const float LookaheadScale  = 0.15f; // fraction of velocity → pixels bias
         private const float MaxLookaheadPx  = 48f;   // clamp so bias doesn't over-scroll
+
+        // ── Frame-rate-independent smoothing rates (Phase 3.1) ─────────────────
+        // Approximate the legacy per-60Hz lerp factors as continuous decay rates.
+        // Smoothing = 0.12 → ~7.7 rate; Lookahead 0.08 → ~5.0 rate. Both kept
+        // distinct intentionally so the lookahead bias trails the position lerp,
+        // but they now stay phase-locked across frame rates.
+        private float _followRate     = 7.66f;  // ≈ -60·ln(1 - 0.12)
+        private const float LookaheadRate = 5.00f;  // ≈ -60·ln(1 - 0.08)
 
         // ── Constructor ────────────────────────────────────────────────────────
         public Camera(Viewport viewport)
@@ -72,30 +93,50 @@ namespace Bloop.Core
         /// <summary>
         /// Update the velocity-based lookahead bias so the player can see ahead
         /// of their movement. Call each frame with the player's pixel velocity.
+        ///
+        /// Phase 3.2: vertical lookahead is suppressed when the player is moving
+        /// upward (jumping). Players want to see what's below during a fall, but
+        /// upward lookahead during a jump pulls the camera off the player and
+        /// reveals less of the surrounding context.
         /// </summary>
         public void SetLookahead(Vector2 velocityPx)
         {
-            Vector2 target = velocityPx * LookaheadScale;
+            // Suppress upward lookahead — only lead on downward motion.
+            float vy = MathF.Max(0f, velocityPx.Y);
+            Vector2 effectiveVel = new Vector2(velocityPx.X, vy);
+
+            Vector2 target = effectiveVel * LookaheadScale;
             float len = target.Length();
             if (len > MaxLookaheadPx)
                 target = target / len * MaxLookaheadPx;
-            // Smooth the bias to avoid jitter on sudden direction changes
-            _lookaheadBias = Vector2.Lerp(_lookaheadBias, target, 0.08f);
+            // Smoothing is applied in Follow() with frame-rate-independent ExpDecay.
+            _lookaheadBiasTarget = target;
         }
+
+        private Vector2 _lookaheadBiasTarget = Vector2.Zero;
 
         /// <summary>
         /// Smoothly move the camera toward the target world position.
         /// Call once per frame from Update.
+        ///
+        /// Phase 3.1: uses frame-rate-independent ExpDecay so a 144 Hz session
+        /// doesn't snap-to-target faster than a 60 Hz session.
         /// </summary>
         public void Follow(Vector2 targetWorldPosition, GameTime gameTime)
         {
-            // Lerp toward target + lookahead bias
+            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            // Smooth the lookahead bias with the same dt so it stays phase-locked
+            // with the camera position update.
+            _lookaheadBias = Bloop.Core.Smoothing.ExpDecay(
+                _lookaheadBias, _lookaheadBiasTarget, LookaheadRate, dt);
+
             Vector2 desired = Clamp(targetWorldPosition + _lookaheadBias);
-            Position = Vector2.Lerp(Position, desired, 1f - Smoothing);
+            Position = Bloop.Core.Smoothing.ExpDecay(Position, desired, _followRate, dt);
 
             // Tick screen shake
             if (_shakeRemaining > 0f)
-                _shakeRemaining -= (float)gameTime.ElapsedGameTime.TotalSeconds;
+                _shakeRemaining -= dt;
         }
 
         /// <summary>
@@ -134,14 +175,15 @@ namespace Bloop.Core
         /// </summary>
         public Matrix GetTransform()
         {
-            // Compute shake offset: decaying sinusoidal displacement
+            // Compute shake offset: decaying sinusoidal displacement.
+            // Phase 3.3: linear decay so the second half of the shake is still
+            // perceptible. Quadratic decay made shake invisible past ~50% of duration.
             Vector2 shakeOffset = Vector2.Zero;
             if (_shakeRemaining > 0f && _shakeDuration > 0f)
             {
-                float progress = _shakeRemaining / _shakeDuration;          // 1→0
-                float decay    = progress * progress;                        // quadratic decay
+                float progress = _shakeRemaining / _shakeDuration;
                 float phase    = _shakeRemaining * _shakeFrequency;
-                float disp     = _shakeAmplitude * decay * (float)Math.Sin(phase);
+                float disp     = _shakeAmplitude * progress * (float)Math.Sin(phase);
                 shakeOffset    = _shakeDir * disp;
             }
 

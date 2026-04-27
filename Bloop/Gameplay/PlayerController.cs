@@ -17,66 +17,26 @@ namespace Bloop.Gameplay
     public class PlayerController
     {
         // ── Tuning constants ───────────────────────────────────────────────────
-        /// <summary>Horizontal movement force in Newtons (applied per frame).</summary>
-        private const float MoveForce         = 750f;  // scaled 1.5× for larger body
-        /// <summary>Maximum horizontal speed in pixels/second.</summary>
-        private const float MaxHorizontalSpeed = 180f;
-        /// <summary>
-        /// Hard cap on horizontal speed (px/s) applied every frame after forces.
-        /// Prevents slingshot/grapple launches from producing velocities so high
-        /// that CCD + sub-stepping cannot prevent tunneling.
-        /// 600 px/s ≈ 18.75 tiles/s — fast enough for exciting gameplay.
-        /// </summary>
-        private const float MaxHorizontalSpeedHard = 600f;
-        /// <summary>
-        /// Hard cap on downward vertical speed (px/s).
-        /// Prevents terminal-velocity tunneling on very long falls.
-        /// 800 px/s ≈ 25 tiles/s.
-        /// </summary>
-        private const float MaxFallSpeedHard = 800f;
-        /// <summary>Jump impulse in pixel-space units (converted to meters).</summary>
-        private const float JumpImpulse       = 240f;  // scaled 1.5× for larger body
-        /// <summary>Climbing vertical speed in pixels/second.</summary>
-        private const float ClimbSpeed        = 100f;
-        /// <summary>Slope angle threshold for auto-slide (degrees).</summary>
-        private const float SlideAngleThreshold = 20f;
-        /// <summary>Multiplier applied to horizontal force when airborne (0–1).</summary>
-        private const float AirControlMultiplier = 0.70f;
-        /// <summary>Speed/force multiplier while crouching (30%).</summary>
-        private const float CrouchSpeedMultiplier = 0.30f;
+        // All movement tuning lives in MovementTuning.cs — single source of truth.
+        // Local aliases are kept short for readability at call sites.
+        private const float MoveForce              = MovementTuning.MoveForce;
+        private const float MaxHorizontalSpeed     = MovementTuning.MaxHorizontalSpeed;
+        private const float MaxHorizontalSpeedHard = MovementTuning.MaxHorizontalSpeedHard;
+        private const float MaxFallSpeedHard       = MovementTuning.MaxFallSpeedHard;
+        private const float JumpImpulse            = MovementTuning.JumpImpulse;
+        private const float ClimbSpeed             = MovementTuning.ClimbSpeed;
+        private const float SlideAngleThreshold    = MovementTuning.SlideAngleThreshold;
+        private const float AirControlMultiplier   = MovementTuning.AirControlMultiplier;
+        private const float CrouchSpeedMultiplier  = MovementTuning.CrouchSpeedMultiplier;
 
-        // ── Wall jump constants ────────────────────────────────────────────────
-        /// <summary>Vertical component of wall jump impulse (60% of normal jump).</summary>
-        private const float WallJumpVertical   = JumpImpulse * 0.60f;
-        /// <summary>Horizontal kick-away component of wall jump impulse.</summary>
-        private const float WallJumpHorizontal = JumpImpulse * 0.55f;
-        /// <summary>Cooldown in seconds between wall jumps (prevents infinite climbing).</summary>
-        private const float WallJumpCooldown   = 0.30f;
+        private const float WallJumpVertical    = MovementTuning.WallJumpVertical;
+        private const float WallJumpHorizontal  = MovementTuning.WallJumpHorizontal;
+        private const float WallJumpCooldown    = MovementTuning.WallJumpCooldown;
 
-        // ── Ledge grab / mantle constants (2.2) ───────────────────────────────
-        /// <summary>
-        /// Maximum pixels the player's head can be above a ledge top to trigger a mantle.
-        /// Allows grabbing ledges even when slightly above them.
-        /// </summary>
-        private const float MantleHeadTolerance = 18f;  // scaled 1.5× for larger body
-
-        // ── Coyote time constants ──────────────────────────────────────────────
-        /// <summary>
-        /// Grace period (seconds) after leaving a platform where jumping is still allowed.
-        /// Prevents the frustrating "I pressed jump right as I walked off the edge" miss.
-        /// </summary>
-        private const float CoyoteTimeDuration = 0.12f;
-
-        // ── Jump buffer constants ──────────────────────────────────────────────
-        /// <summary>
-        /// Window (seconds) before landing where a jump press is buffered.
-        /// If the player lands within this window, the jump fires automatically.
-        /// </summary>
-        private const float JumpBufferDuration = 0.10f;
-
-        // ── Wall raycast constants ─────────────────────────────────────────────
-        /// <summary>How far (pixels) to cast the horizontal wall-detection rays.</summary>
-        private const float WallRayLength = 4f;
+        private const float MantleHeadTolerance = MovementTuning.MantleHeadTolerance;
+        private const float CoyoteTimeDuration  = MovementTuning.CoyoteTimeDuration;
+        private const float JumpBufferDuration  = MovementTuning.JumpBufferDuration;
+        private const float WallRayLength       = MovementTuning.WallRayLength;
 
         // ── References ─────────────────────────────────────────────────────────
         private readonly Player        _player;
@@ -87,43 +47,50 @@ namespace Bloop.Gameplay
         private readonly Camera        _camera;
 
         // ── Wall jump state ────────────────────────────────────────────────────
-        /// <summary>Remaining cooldown time before another wall jump is allowed.</summary>
         private float _wallJumpCooldownTimer = 0f;
 
-        // ── Wall detection hysteresis (timer-based, prevents oscillation) ──────────
+        // ── Wall detection hysteresis (symmetric: requires sustained contact AND release) ──
         private bool _prevTouchingWallLeft  = false;
         private bool _prevTouchingWallRight = false;
-        /// <summary>Timer (seconds) since last wall contact — used for hysteresis.</summary>
-        private float _wallHysteresisTimer = 0f;
-        /// <summary>How long to hold the wall flag after losing contact (80ms).</summary>
-        private const float WallHysteresisDuration = 0.08f;
+        /// <summary>Time (s) of continuous left-wall raw contact — must exceed WallContactRequired to report.</summary>
+        private float _leftContactTimer  = 0f;
+        /// <summary>Time (s) of continuous right-wall raw contact — must exceed WallContactRequired to report.</summary>
+        private float _rightContactTimer = 0f;
+        /// <summary>Time (s) since last left-wall raw contact — must exceed WallReleaseGrace to drop reporting.</summary>
+        private float _leftReleaseTimer  = 999f;
+        /// <summary>Time (s) since last right-wall raw contact — must exceed WallReleaseGrace to drop reporting.</summary>
+        private float _rightReleaseTimer = 999f;
+
+        private const float WallContactRequired = MovementTuning.WallContactRequired;
+        private const float WallReleaseGrace    = MovementTuning.WallReleaseGrace;
 
         // ── Wall-cling coyote time (allows wall-jump briefly after releasing cling) ─
         private float _wallClingCoyoteTimer = 0f;
-        private const float WallClingCoyoteDuration = 0.08f;
-        // Which wall was last clung (true = right wall), used to compute kick direction during coyote window
+        private const float WallClingCoyoteDuration = MovementTuning.WallClingCoyoteDuration;
+        /// <summary>Which wall was last clung (true = right wall).</summary>
         private bool _lastClingWasRightWall = false;
+        /// <summary>Player position when wall-cling coyote window opened — invalidate if player drifts too far.</summary>
+        private Vector2 _wallClingCoyoteOriginPx = Vector2.Zero;
 
         // ── Wall slide / cling state ───────────────────────────────────────────
-        /// <summary>How long the player has been pressing toward a wall while falling.</summary>
         private float _wallSlideTimer = 0f;
-        /// <summary>Current linear damping applied during wall slide (ramps up).</summary>
         private float _wallSlideDamping = 0f;
-        private const float WallSlideMaxDamping       = 20f;  // damping at full slide
-        private const float WallSlideRampTime         = 0.5f; // seconds to reach max damping
-        private const float WallClingVelocityThreshold = 10f; // px/s — below this, snap to cling
-        private const float WallClingTimerThreshold   = 0.6f; // seconds pressing wall → auto-cling
-        private const float WallClimbSpeed            = 40f;  // px/s upward while clinging
+        private const float WallSlideMaxDamping        = MovementTuning.WallSlideMaxDamping;
+        private const float WallSlideRampTime          = MovementTuning.WallSlideRampTime;
+        private const float WallClingVelocityThreshold = MovementTuning.WallClingVelocityThreshold;
+        private const float WallClingTimerThreshold    = MovementTuning.WallClingTimerThreshold;
+        private const float WallClimbSpeed             = MovementTuning.WallClimbSpeed;
 
         // ── Coyote time state ──────────────────────────────────────────────────
-        /// <summary>Remaining coyote time after leaving a platform.</summary>
         private float _coyoteTimer = 0f;
-        /// <summary>Whether the player was grounded last frame (for coyote time detection).</summary>
         private bool _wasGroundedLastFrame = false;
 
         // ── Jump buffer state ──────────────────────────────────────────────────
-        /// <summary>Remaining time for a buffered jump press.</summary>
         private float _jumpBufferTimer = 0f;
+        /// <summary>True if the buffered jump was set while a ground/coyote/wall jump was actually possible.
+        /// Prevents a stale buffered press from firing after coyote expired without landing.</summary>
+        private bool _jumpBufferGroundEligible = false;
+
 
         // ── Tile map reference (for ledge detection and wall raycasts) ─────────
         private TileMap? _tileMap;
@@ -179,14 +146,12 @@ namespace Bloop.Gameplay
 
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
-            // ── Wall hysteresis timer tick ─────────────────────────────────────
-            if (_wallHysteresisTimer > 0f)
-                _wallHysteresisTimer -= dt;
-
             // ── Per-frame wall detection via raycasts ──────────────────────────
-            UpdateWallDetection();
+            UpdateWallDetection(dt);
 
             // ── Wall slide → cling transition ──────────────────────────────────
+            // Phase 1.4: ramp resets whenever physical wall contact is lost (not just
+            // on state exit) so brief separations don't accumulate stale damping.
             if (_player.State == PlayerState.Falling && _player.IsTouchingWall)
             {
                 float horiz = _input.GetHorizontalAxis();
@@ -199,9 +164,6 @@ namespace Bloop.Gameplay
                         MathHelper.Clamp(_wallSlideTimer / WallSlideRampTime, 0f, 1f));
                     _player.Body.LinearDamping = _wallSlideDamping;
 
-                    // ── Bug #4 fix: inward wall-push force ─────────────────────
-                    // Apply a small horizontal force pushing the player into the wall
-                    // to prevent bouncing away from the wall surface during slide.
                     float pushDir = _player.IsTouchingWallLeft ? -1f : 1f;
                     _player.Body.ApplyForce(PhysicsManager.ToMeters(
                         new Vector2(pushDir * MoveForce * 0.15f, 0f)));
@@ -218,12 +180,19 @@ namespace Bloop.Gameplay
                 {
                     _wallSlideTimer   = 0f;
                     _wallSlideDamping = 0f;
+                    _player.Body.LinearDamping = 0f;
                 }
             }
             else if (_player.State != PlayerState.WallClinging)
             {
-                _wallSlideTimer   = 0f;
-                _wallSlideDamping = 0f;
+                // Lost wall contact entirely — reset slide ramp and clear damping
+                // so the next wall touch starts from zero.
+                if (_wallSlideTimer > 0f || _wallSlideDamping > 0f)
+                {
+                    _wallSlideTimer   = 0f;
+                    _wallSlideDamping = 0f;
+                    _player.Body.LinearDamping = 0f;
+                }
             }
 
             // ── Bug #4 fix: climb entry detection ──────────────────────────────
@@ -289,9 +258,12 @@ namespace Bloop.Gameplay
                 }
                 else if (_input.IsCrouchHeld() || (!pressingTowardWall && horiz != 0f))
                 {
-                    // Down or pressing away: release cling — start coyote window for wall jump
-                    _wallClingCoyoteTimer = WallClingCoyoteDuration;
-                    _lastClingWasRightWall = _player.IsTouchingWallRight;
+                    // Down or pressing away: release cling — start coyote window for wall jump.
+                    // Snapshot position so we can invalidate the coyote if the player drifts
+                    // to a different wall (Phase 1.1 — fixes wrong-direction kick at coyote edge).
+                    _wallClingCoyoteTimer    = WallClingCoyoteDuration;
+                    _lastClingWasRightWall   = _player.IsTouchingWallRight;
+                    _wallClingCoyoteOriginPx = _player.PixelPosition;
                     _player.Body.IgnoreGravity = false;
                     _player.Body.LinearDamping = 0f;
                     _player.SetState(PlayerState.Falling);
@@ -622,20 +594,50 @@ namespace Bloop.Gameplay
 
             // ── Wall-cling coyote tick ─────────────────────────────────────────
             if (_wallClingCoyoteTimer > 0f)
+            {
                 _wallClingCoyoteTimer -= dt;
+                // Phase 1.1: invalidate if player has drifted too far from the cling origin,
+                // OR if they are now touching the OPPOSITE wall (different surface entirely).
+                Vector2 driftDelta = _player.PixelPosition - _wallClingCoyoteOriginPx;
+                if (driftDelta.LengthSquared() > MovementTuning.WallClingCoyoteMaxDriftPx
+                                              * MovementTuning.WallClingCoyoteMaxDriftPx)
+                {
+                    _wallClingCoyoteTimer = 0f;
+                }
+                else if ((_lastClingWasRightWall && _player.IsTouchingWallLeft  && !_player.IsTouchingWallRight) ||
+                         (!_lastClingWasRightWall && _player.IsTouchingWallRight && !_player.IsTouchingWallLeft))
+                {
+                    // Touching the opposite wall now — defer to current touch, drop coyote.
+                    _wallClingCoyoteTimer = 0f;
+                }
+            }
 
             // ── Jump ───────────────────────────────────────────────────────────
             bool jumpPressed = _input.IsJumpPressed();
             if (jumpPressed && !isCrouching)
-                _jumpBufferTimer = JumpBufferDuration; // buffer the press
+            {
+                _jumpBufferTimer = JumpBufferDuration;
+                // Phase 1.3: a buffered jump should only fire on landing if it was
+                // buffered while ground/coyote was actually live, OR while a
+                // wall-jump opportunity was present. Otherwise a press during free-fall
+                // would queue and fire on landing — surprising the player.
+                _jumpBufferGroundEligible = _player.IsGrounded
+                                         || _coyoteTimer > 0f
+                                         || _player.IsTouchingWall
+                                         || _wallClingCoyoteTimer > 0f;
+            }
+            // Drop the eligibility flag when the buffer expires without firing.
+            if (_jumpBufferTimer <= 0f) _jumpBufferGroundEligible = false;
 
             // Can jump if: grounded OR within coyote time window, and not crouching
             bool canJump = (_player.IsGrounded || _coyoteTimer > 0f) && !isCrouching;
+            // For a buffered (not just-pressed) trigger, require that the buffer was eligible.
+            bool buffereTrigger = _jumpBufferTimer > 0f && (jumpPressed || _jumpBufferGroundEligible);
 
-            if ((jumpPressed || _jumpBufferTimer > 0f) && canJump)
+            if ((jumpPressed || buffereTrigger) && canJump)
             {
-                // Consume the buffer
                 _jumpBufferTimer = 0f;
+                _jumpBufferGroundEligible = false;
                 _coyoteTimer     = 0f;
 
                 // Slingshot launch if kinetic charge is maxed
@@ -686,6 +688,7 @@ namespace Bloop.Gameplay
                 _wallJumpCooldownTimer = WallJumpCooldown;
                 _coyoteTimer = 0f;
                 _jumpBufferTimer = 0f;
+                _jumpBufferGroundEligible = false;
             }
 
             // ── Ledge grab / mantle detection (2.2) ───────────────────────────
@@ -774,15 +777,20 @@ namespace Bloop.Gameplay
         /// This replaces the callback-based counter approach which was prone to drift
         /// when the player body was teleported or contacts changed rapidly.
         ///
-        /// Uses timer-based hysteresis (80ms) to prevent oscillation when the player
-        /// is near a wall edge or diagonal corner.
+        /// Uses symmetric per-side hysteresis: a wall must be touched continuously
+        /// for <see cref="WallContactRequired"/> seconds before reporting "on wall,"
+        /// and must be released for <see cref="WallReleaseGrace"/> seconds before
+        /// reporting "off wall." Eliminates phantom cling near corners and prevents
+        /// oscillation without giving the player asymmetric grace.
         /// </summary>
-        private void UpdateWallDetection()
+        private void UpdateWallDetection(float dt)
         {
             if (_tileMap == null)
             {
                 _player.IsTouchingWallLeft  = false;
                 _player.IsTouchingWallRight = false;
+                _leftContactTimer = _rightContactTimer = 0f;
+                _leftReleaseTimer = _rightReleaseTimer = 999f;
                 return;
             }
 
@@ -791,8 +799,6 @@ namespace Bloop.Gameplay
             float halfH  = _player.CurrentHeightPx / 2f;
             int   ts     = TileMap.TileSize;
 
-            // Check three vertical sample points (top, middle, bottom of body)
-            // to handle partial wall contacts correctly
             float[] sampleYOffsets = { -halfH * 0.6f, 0f, halfH * 0.6f };
 
             bool touchLeft  = false;
@@ -802,7 +808,6 @@ namespace Bloop.Gameplay
             {
                 float sampleY = pos.Y + yOff;
 
-                // Left wall: tile just to the left of the player body
                 float leftX  = pos.X - halfW - WallRayLength;
                 int   ltx    = (int)(leftX  / ts);
                 int   lty    = (int)(sampleY / ts);
@@ -812,7 +817,6 @@ namespace Bloop.Gameplay
                         touchLeft = true;
                 }
 
-                // Right wall: tile just to the right of the player body
                 float rightX = pos.X + halfW + WallRayLength;
                 int   rtx    = (int)(rightX  / ts);
                 int   rty    = (int)(sampleY  / ts);
@@ -823,40 +827,34 @@ namespace Bloop.Gameplay
                 }
             }
 
-            // ── Bug #4 fix: timer-based hysteresis ─────────────────────────────
-            // Replace 1-frame boolean hysteresis with an 80ms timer.
-            // When the player loses wall contact, the wall flag stays true for
-            // WallHysteresisDuration seconds. This prevents oscillation when the
-            // player slides past tile corners or diagonal edges.
-            if (touchLeft)
-            {
-                _player.IsTouchingWallLeft = true;
-                _wallHysteresisTimer = WallHysteresisDuration;
-            }
-            else if (_wallHysteresisTimer > 0f)
-            {
-                _player.IsTouchingWallLeft = true;
-            }
-            else
-            {
-                _player.IsTouchingWallLeft = false;
-            }
+            // ── Symmetric hysteresis: contact AND release each have a settling time ──
+            // Already-clung walls stay reported through the release grace; new contacts
+            // need a brief commitment to avoid 1-frame phantom clings near corners.
+            // Special case: if the player is currently WallClinging, drop the contact
+            // requirement so they don't spuriously fall off mid-cling.
+            bool clingActive = _player.State == PlayerState.WallClinging;
+            float contactRequired = clingActive ? 0f : WallContactRequired;
 
-            if (touchRight)
-            {
-                _player.IsTouchingWallRight = true;
-                _wallHysteresisTimer = WallHysteresisDuration;
-            }
-            else if (_wallHysteresisTimer > 0f)
-            {
-                _player.IsTouchingWallRight = true;
-            }
-            else
-            {
-                _player.IsTouchingWallRight = false;
-            }
+            if (touchLeft)  { _leftContactTimer  += dt; _leftReleaseTimer  = 0f; }
+            else            { _leftContactTimer  = 0f;  _leftReleaseTimer += dt; }
 
-            // Keep the old flags for backward compat (used elsewhere)
+            if (touchRight) { _rightContactTimer += dt; _rightReleaseTimer = 0f; }
+            else            { _rightContactTimer = 0f;  _rightReleaseTimer += dt; }
+
+            bool wasLeft  = _player.IsTouchingWallLeft;
+            bool wasRight = _player.IsTouchingWallRight;
+
+            // Promote to "on wall" once contact has held long enough.
+            if (_leftContactTimer  >= contactRequired) wasLeft  = true;
+            if (_rightContactTimer >= contactRequired) wasRight = true;
+
+            // Demote to "off wall" once release grace has elapsed.
+            if (_leftReleaseTimer  >= WallReleaseGrace) wasLeft  = false;
+            if (_rightReleaseTimer >= WallReleaseGrace) wasRight = false;
+
+            _player.IsTouchingWallLeft  = wasLeft;
+            _player.IsTouchingWallRight = wasRight;
+
             _prevTouchingWallLeft  = touchLeft;
             _prevTouchingWallRight = touchRight;
         }
@@ -1065,8 +1063,8 @@ namespace Bloop.Gameplay
 
             var pts = new Vector2[FlareArcSteps + 1];
             Vector2 pos = spawnPos;
-            // Gravity in pixel-space: 20 m/s² × 64 px/m = 1280 px/s²
-            const float gravityPx = 1280f;
+            // Phase 2.6: read gravity from PhysicsManager — no more hardcoded duplication.
+            float gravityPx = PhysicsManager.ToPixels(PhysicsManager.Gravity.Y);
             for (int i = 0; i <= FlareArcSteps; i++)
             {
                 pts[i] = pos;

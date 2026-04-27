@@ -54,6 +54,14 @@ namespace Bloop.Screens
         // ── Particle system (3.1) ──────────────────────────────────────────────
         private ParticleSystem? _particles;
 
+        // ── Audio (Phase 5) ────────────────────────────────────────────────────
+        private readonly Bloop.Audio.AudioManager _audio = new();
+        // Tracks last frame's PlayerState so we can fire one-shot SFX on transitions.
+        private PlayerState _audioPrevState = PlayerState.Idle;
+        // Throttle low-resource warnings so they don't loop every frame.
+        private float _lowFuelAlarmCooldown = 0f;
+        private float _lowBreathCooldown   = 0f;
+
         // ── Player trail effect (3.5) ──────────────────────────────────────────
         private readonly TrailEffect _trail = new TrailEffect();
 
@@ -81,6 +89,10 @@ namespace Bloop.Screens
         // ── Damage flash (Task 13.1) ───────────────────────────────────────────
         private float _damageFlashTimer = 0f;
         private const float DamageFlashDuration = 0.15f;
+
+        // ── Level-transition flash (Phase 6.4) ────────────────────────────────
+        private float _levelTransitionTimer = 0f;
+        private const float LevelTransitionDuration = 0.45f;
 
         // ── Contextual prompt (Task 12) ────────────────────────────────────────
         private float  _promptFadeTimer = 0f;
@@ -138,6 +150,39 @@ namespace Bloop.Screens
         // ── LoadContent ────────────────────────────────────────────────────────
         public override void LoadContent()
         {
+            // ── Audio (Phase 5): try-load each SFX; missing files are no-ops ───
+            // Asset names follow Content/Audio/<key>. Keep registrations even when
+            // files don't exist yet so adding a WAV later "just works."
+            var content = Game1.Instance.Content;
+            string a(string n) => "Audio/" + n;
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.FootstepStone,   a("footstep_stone"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.Jump,            a("jump"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LandSoft,        a("land_soft"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LandHard,        a("land_hard"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.WallJumpKick,    a("wall_jump"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.MantlePull,      a("mantle"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.GrappleFire,     a("grapple_fire"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.GrappleHit,      a("grapple_hit"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.GrappleHitCrystal, a("grapple_hit_crystal"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.RopeRelease,     a("rope_release"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LaunchWhoosh,    a("launch_whoosh"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.DamageHit,       a("damage_hit"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.StunHit,         a("stun_hit"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.FallDamage,      a("fall_damage"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.Death,           a("death"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.DebuffApplied,   a("debuff_applied"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LowHealthHeartbeat, a("lo_health_heartbeat"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LowBreathWheeze,    a("lo_breath_wheeze"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.LowFuelAlarm,       a("lo_fuel_alarm"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.ItemPickup,       a("item_pickup"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.ItemUse,          a("item_use"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.FlareThrow,       a("flare_throw"));
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.PossessEnter,     a("possess_enter"), Bloop.Audio.AudioBus.Sfx);
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.PossessExit,      a("possess_exit"), Bloop.Audio.AudioBus.Sfx);
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.UiClick,          a("ui_click"), Bloop.Audio.AudioBus.Ui);
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.InventoryOpen,    a("inventory_open"), Bloop.Audio.AudioBus.Ui);
+            _audio.TryLoad(content, Bloop.Audio.SfxKeys.InventoryClose,   a("inventory_close"), Bloop.Audio.AudioBus.Ui);
+
             // ── Physics world ──────────────────────────────────────────────────
             _physics = new PhysicsManager();
 
@@ -214,11 +259,24 @@ namespace Bloop.Screens
             {
                 _camera?.Shake(4f, 0.10f);
                 _trail.SpawnGrappleFlash(pos, color);
+
+                // Phase 5: anchor SFX with positional pan + crystal-variant pitch.
+                if (_player != null)
+                {
+                    string key = color.B > 200 ? Bloop.Audio.SfxKeys.GrappleHitCrystal
+                                               : Bloop.Audio.SfxKeys.GrappleHit;
+                    _audio.PlayAt(key, _player.PixelPosition, pos, 700f, 0.8f);
+                }
             };
 
             // ── Wire damage flash (Task 13.1) ──────────────────────────────────
-            _player.OnDamageReceived = (_) =>
+            _player.OnDamageReceived = (amount) =>
+            {
                 _damageFlashTimer = DamageFlashDuration;
+                // Phase 5: damage SFX scaled by hit magnitude.
+                _audio.Play(Bloop.Audio.SfxKeys.DamageHit,
+                    volume: MathHelper.Clamp(0.5f + amount / 60f, 0.5f, 1f));
+            };
 
             // Earthquake system shakes the screen during warning/active/aftershock
             if (_level.Earthquake != null)
@@ -344,6 +402,59 @@ namespace Bloop.Screens
             if (justLanded && _prevFallSpeedPx > 80f)
                 _trail.SpawnLandingDust(_player.PixelPosition, _prevFallSpeedPx);
 
+            // ── Phase 5: state-transition audio ───────────────────────────────
+            // Fire one-shots when the player enters a state that has its own SFX.
+            if (_player.State != _audioPrevState)
+            {
+                switch (_player.State)
+                {
+                    case PlayerState.Jumping:
+                        _audio.PlayVaried(Bloop.Audio.SfxKeys.Jump, 0.7f);
+                        break;
+                    case PlayerState.WallJumping:
+                        _audio.PlayVaried(Bloop.Audio.SfxKeys.WallJumpKick, 0.8f);
+                        break;
+                    case PlayerState.Mantling:
+                        _audio.Play(Bloop.Audio.SfxKeys.MantlePull, 0.7f);
+                        break;
+                    case PlayerState.Launching:
+                        _audio.Play(Bloop.Audio.SfxKeys.LaunchWhoosh, 0.9f);
+                        break;
+                    case PlayerState.Stunned:
+                        _audio.Play(Bloop.Audio.SfxKeys.StunHit, 1f);
+                        break;
+                    case PlayerState.Dead:
+                        _audio.Play(Bloop.Audio.SfxKeys.Death, 1f);
+                        break;
+                }
+                // Land transition: any aerial → grounded state with non-trivial fall speed.
+                if (justLanded)
+                {
+                    string key = _prevFallSpeedPx > 380f
+                        ? Bloop.Audio.SfxKeys.LandHard
+                        : Bloop.Audio.SfxKeys.LandSoft;
+                    _audio.PlayVaried(key, MathHelper.Clamp(_prevFallSpeedPx / 500f, 0.4f, 1f));
+                }
+                _audioPrevState = _player.State;
+            }
+
+            // ── Phase 5: low-resource warnings (throttled) ────────────────────
+            if (_lowFuelAlarmCooldown > 0f)  _lowFuelAlarmCooldown -= dt;
+            if (_lowBreathCooldown   > 0f)   _lowBreathCooldown   -= dt;
+
+            float fuelFrac   = _player.Stats.LanternFuel / PlayerStats.MaxLanternFuel;
+            float breathFrac = _player.Stats.Breath      / PlayerStats.MaxBreath;
+            if (fuelFrac < 0.15f && _lowFuelAlarmCooldown <= 0f)
+            {
+                _audio.Play(Bloop.Audio.SfxKeys.LowFuelAlarm, 0.5f);
+                _lowFuelAlarmCooldown = 4f;
+            }
+            if (breathFrac < 0.20f && _lowBreathCooldown <= 0f)
+            {
+                _audio.Play(Bloop.Audio.SfxKeys.LowBreathWheeze, 0.6f);
+                _lowBreathCooldown = 2.5f;
+            }
+
             _prevPlayerState = _player.State;
             _prevFallSpeedPx = MathF.Max(_player.PixelVelocity.Y, 0f);
 
@@ -370,14 +481,16 @@ namespace Bloop.Screens
             _camera.Follow(cameraTarget, gameTime);
 
             // ── Smooth HUD display fractions (Task 9) ─────────────────────────
+            // Phase 4.2: drops snap immediately so players FEEL hits within one
+            // frame; only recovery (heals/refills) is lerped for visual polish.
             float actualLantern = _player.Stats.LanternFuel / PlayerStats.MaxLanternFuel;
             float actualBreath  = _player.Stats.Breath      / PlayerStats.MaxBreath;
             float actualHealth  = _player.Stats.Health      / PlayerStats.MaxHealth;
             float actualKinetic = _player.Stats.KineticCharge / PlayerStats.MaxKineticCharge;
-            _displayLantern = MathHelper.Lerp(_displayLantern, actualLantern, dt * 8f);
-            _displayBreath  = MathHelper.Lerp(_displayBreath,  actualBreath,  dt * 8f);
-            _displayHealth  = MathHelper.Lerp(_displayHealth,  actualHealth,  dt * 8f);
-            _displayKinetic = MathHelper.Lerp(_displayKinetic, actualKinetic, dt * 8f);
+            _displayLantern = SnapDownLerpUp(_displayLantern, actualLantern, dt * 8f);
+            _displayBreath  = SnapDownLerpUp(_displayBreath,  actualBreath,  dt * 8f);
+            _displayHealth  = SnapDownLerpUp(_displayHealth,  actualHealth,  dt * 8f);
+            _displayKinetic = MathHelper.Lerp(_displayKinetic, actualKinetic, dt * 8f); // kinetic isn't a damage stat
 
             // ── Sanity smooth display + hallucination effects ──────────────────
             float actualSanity = _player.Stats.Sanity / PlayerStats.MaxSanity;
@@ -415,6 +528,7 @@ namespace Bloop.Screens
 
             // ── Damage flash timer (Task 13.1) ─────────────────────────────────
             if (_damageFlashTimer > 0f) _damageFlashTimer -= dt;
+            if (_levelTransitionTimer > 0f) _levelTransitionTimer -= dt;
 
             // ── Contextual prompt fade (Task 12) ───────────────────────────────
             string newPrompt = GetContextualPrompt();
@@ -451,6 +565,13 @@ namespace Bloop.Screens
                 SaveGame();
                 Depth++;
                 ReloadLevel();
+
+                // Phase 6.4: descent feedback — short fade-from-black + downward
+                // shake + audio sting, so the level transition feels weighty
+                // instead of just teleporting.
+                _levelTransitionTimer = LevelTransitionDuration;
+                _camera?.Shake(6f, 0.30f, new Vector2(0f, 1f));
+                _audio.Play(Bloop.Audio.SfxKeys.DistantRumble, 0.7f);
             }
         }
 
@@ -973,6 +1094,16 @@ namespace Bloop.Screens
             return MathHelper.Clamp(0.06f - (depth - 1) * 0.005f, 0.025f, 0.06f);
         }
 
+        /// <summary>
+        /// HUD bar smoothing: drops snap to the new value (so damage feels
+        /// instant); recoveries lerp toward the target. Phase 4.2.
+        /// </summary>
+        private static float SnapDownLerpUp(float displayed, float actual, float lerpAmount)
+        {
+            if (actual < displayed) return actual; // damage / drain → instant
+            return MathHelper.Lerp(displayed, actual, MathHelper.Clamp(lerpAmount, 0f, 1f));
+        }
+
         /// <summary>Draw the HUD in screen space (no camera transform).</summary>
         private void DrawHUD(SpriteBatch spriteBatch, AssetManager assets, int vw, int vh)
         {
@@ -983,6 +1114,17 @@ namespace Bloop.Screens
             const int barX  = 16;
             const int iconW = 14;
             int y = 16;
+
+            // ── Phase 6.4: level-transition fade-from-black ───────────────────
+            // Solid black overlay that fades out as the new level reveals.
+            if (_levelTransitionTimer > 0f)
+            {
+                float t = _levelTransitionTimer / LevelTransitionDuration; // 1→0
+                byte a = (byte)(MathHelper.Clamp(t, 0f, 1f) * 255f);
+                assets.DrawRect(spriteBatch,
+                    new Rectangle(0, 0, vw, vh),
+                    new Color((byte)0, (byte)0, (byte)0, a));
+            }
 
             // ── Damage flash vignette (Task 13.1) ─────────────────────────────
             if (_damageFlashTimer > 0f)

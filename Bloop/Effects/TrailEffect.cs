@@ -111,7 +111,10 @@ namespace Bloop.Effects
                     _sparkTimer -= dt;
                     if (_sparkTimer <= 0f)
                     {
-                        _sparkTimer = 0.025f; // 40 sparks/sec
+                        // Phase 3.5: spawn rate scales with horizontal speed.
+                        // Reference: 200 px/s = 1×; clamp to [0.3×, 2.5×].
+                        float slideScale = Math.Clamp(MathF.Abs(vel.X) / 200f, 0.3f, 2.5f);
+                        _sparkTimer = 0.025f / slideScale;
                         SpawnSlidingSparks(pos, vel);
                     }
                     break;
@@ -120,7 +123,9 @@ namespace Bloop.Effects
                     _dustTimer -= dt;
                     if (_dustTimer <= 0f)
                     {
-                        _dustTimer = 0.06f; // ~16 dust/sec
+                        // Phase 3.5: dust scales with fall speed (cap so terminal velocity doesn't strobe).
+                        float fallScale = Math.Clamp(MathF.Abs(vel.Y) / 250f, 0.3f, 2.5f);
+                        _dustTimer = 0.06f / fallScale;
                         SpawnFallingDust(pos, vel);
                     }
                     break;
@@ -129,7 +134,9 @@ namespace Bloop.Effects
                     _launchTimer -= dt;
                     if (_launchTimer <= 0f)
                     {
-                        _launchTimer = 0.018f; // ~55 streaks/sec
+                        // Phase 3.5: streak rate scales with overall speed.
+                        float launchScale = Math.Clamp(vel.Length() / 350f, 0.5f, 2.5f);
+                        _launchTimer = 0.018f / launchScale;
                         SpawnLaunchStreaks(pos, vel, player.FacingDirection);
                     }
                     break;
